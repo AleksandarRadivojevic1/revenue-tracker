@@ -141,3 +141,11 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
+
+# Project-local
+docs/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+payments.db

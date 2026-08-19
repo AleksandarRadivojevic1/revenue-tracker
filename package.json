@@ -1,0 +1,26 @@
+{
+  "name": "revenue-tracker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently -k -n api,web -c blue,green \"npm:dev:api\" \"npm:dev:web\"",
+    "dev:api": "node --watch server/index.js",
+    "dev:web": "vite",
+    "build": "vite build",
+    "start": "node server/index.js",
+    "preview": "vite preview",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.4",
+    "concurrently": "^9.1.2",
+    "vite": "^6.0.7",
+    "vitest": "^2.1.8"
+  }
+}

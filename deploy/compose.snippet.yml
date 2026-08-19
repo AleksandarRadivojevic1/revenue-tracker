@@ -1,0 +1,66 @@
+# revenue-tracker — snippet to fold into ~/server/docker-compose.yml on the Pi.
+#
+# This is a SNIPPET, not a standalone stack: paste the service below under the
+# existing `services:` key alongside homeassistant, grafana, ntfy, wireguard, …
+# It is still valid on its own, so it can be validated with:
+#   docker compose -f deploy/compose.snippet.yml config
+#
+# CONSEQUENCE THAT BIT seo-cockpit ONCE: `git pull` on the Pi updates THIS file,
+# not the live ~/server/docker-compose.yml. Changing a variable here does
+# nothing until it is also pasted into the live file. After editing, diff the two.
+#
+# Layout on the target Pi (user `acko`, /home/acko/server):
+#
+#   ~/server/revenue-tracker/
+#     src/    <- the git checkout (code only; this is the build context)
+#     data/   <- payments.db lives here. PERSISTENT, deliberately OUTSIDE the
+#                checkout so a re-clone or hard reset can never delete it. This
+#                database is HAND-ENTERED and cannot be re-fetched from anywhere.
+#
+# Backups go to the NVMe (a different physical device from the SD card holding
+# data/) at /media/library/backups/revenue-tracker.
+#
+# Host port 8092 — 8091 is seo-cockpit. Verify free before `up`:
+#   ss -ltnp | grep 8092 || echo "8092 free"
+
+services:
+  revenue-tracker:
+    build:
+      # Context is the REPO ROOT (the checkout), which the Dockerfile expects.
+      context: ./revenue-tracker/src
+      dockerfile: deploy/Dockerfile
+    image: revenue-tracker:latest
+    container_name: revenue-tracker
+    restart: unless-stopped
+    # Run as the HOST account that owns data/, overriding the image's baked uid.
+    # This app WRITES its database, so the mount is read-write and the uid must
+    # match the owner of data/. Defaults suit a single-user Pi (first account is
+    # 1000); override in ~/server/.env if `id -u` differs.
+    user: "${REV_TRACKER_UID:-1000}:${REV_TRACKER_GID:-1000}"
+    environment:
+      # The app serves on 3000 inside the container; published as 8092 below.
+      PORT: "3000"
+      # Basic Auth over the WHOLE app (API + UI). REQUIRED — the `:?` makes
+      # compose refuse to start if it is unset, so the finances are never
+      # exposed unauthenticated. Set REV_TRACKER_PASSWORD in ~/server/.env.
+      REV_TRACKER_USER: ${REV_TRACKER_USER:-acko}
+      REV_TRACKER_PASSWORD: ${REV_TRACKER_PASSWORD:?set REV_TRACKER_PASSWORD in ~/server/.env}
+      # SQLite file, on the mounted data volume below.
+      DB_PATH: /data/payments.db
+      # Nightly VACUUM INTO snapshot target. UNSET DISABLES BACKUPS on purpose —
+      # the only default would be the SD card, which is the failure this exists
+      # to survive. Must be the container path of the NVMe mount below.
+      REV_BACKUP_DIR: /backups
+      TZ: UTC
+    volumes:
+      # The database. READ-WRITE — this app is the sole writer.
+      - ./revenue-tracker/data:/data
+      # Backup target on the NVMe — a DIFFERENT PHYSICAL DEVICE from the SD card
+      # holding data/. A snapshot beside the original survives a bad `rm` but not
+      # a dead card, and card failure is the likelier way to lose a Pi's storage.
+      - /media/library/backups/revenue-tracker:/backups
+    ports:
+      # Host 8092 -> container 3000. VERIFY 8092 IS FREE before bringing this up
+      # (`ss -ltnp | grep 8092`); if taken, change the host side here and in the
+      # Homepage tile.
+      - "8092:3000"

@@ -1,0 +1,16 @@
+# Keep the build context small and secrets/data out of image layers.
+node_modules
+dist
+.git
+docs
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+payments.db
+.env
+.env.*
+!.env.example
+npm-debug.log*
+.vscode
+.DS_Store
