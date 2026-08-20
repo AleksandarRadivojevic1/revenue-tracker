@@ -38,6 +38,7 @@ export default function ProjectDetail({
         </div>
         <div className="card" style={{ padding: 0 }}>
           {rows.length === 0 ? <div className="empty">None yet.</div> : (
+            <div className="table-scroll">
             <table className="table">
               <thead>
                 <tr><th>Label</th><th>Freq</th><th>Next due</th><th></th><th className="num">Amount</th><th></th></tr>
@@ -67,6 +68,7 @@ export default function ProjectDetail({
                 })}
               </tbody>
             </table>
+            </div>
           )}
         </div>
       </>

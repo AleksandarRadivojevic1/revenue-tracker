@@ -388,8 +388,51 @@ button { font-family: inherit; cursor: pointer; }
 .kv .k { color: var(--color-fog); }
 .kv .v { font-weight: 500; }
 
+/* horizontally scrollable wrapper for wide tables on narrow screens */
+.table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.table-scroll .table { min-width: 560px; }
+
+/* ---------- responsive ---------- */
 @media (max-width: 860px) {
   .kpi-row { grid-template-columns: repeat(2, 1fr); }
   .detail-grid { grid-template-columns: 1fr; }
   .pkg-grid { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 640px) {
+  body { background-size: 18px 18px; }
+
+  /* topbar: keep one row, shrink chrome, drop the wordmark */
+  .topbar-inner { padding: 10px 14px; gap: 8px; }
+  .brand span:not(.mark) { display: none; }
+  .topbar nav { margin-left: 0; gap: 2px; }
+  .nav-btn { padding: 7px 10px; }
+  .seg button { padding: 4px 9px; font-size: 12px; }
+
+  .page { padding: 20px 16px 64px; }
+
+  /* page header stacks; primary action goes full width */
+  .page-head {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+  .page-title { font-size: 24px; }
+  .page-head > .btn,
+  .page-head > div:last-child > .btn { width: 100%; justify-content: center; }
+
+  .section-title { margin: 24px 0 10px; }
+
+  /* forms: stacked fields read better than cramped columns */
+  .field-row { flex-direction: column; gap: 0; }
+
+  /* modal hugs the viewport */
+  .modal-backdrop { padding: 12px; }
+  .modal { max-height: 92vh; }
+}
+
+@media (max-width: 420px) {
+  .kpi-row { grid-template-columns: 1fr; }
+  .seg button { padding: 4px 7px; }
 }

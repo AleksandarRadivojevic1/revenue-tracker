@@ -76,6 +76,7 @@ export default function Dashboard({ data, onOpenProject, createProject, payCharg
         {scheduled.length === 0 ? (
           <div className="empty">Nothing due right now. 🎉</div>
         ) : (
+          <div className="table-scroll">
           <table className="table">
             <thead>
               <tr>
@@ -100,6 +101,7 @@ export default function Dashboard({ data, onOpenProject, createProject, payCharg
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </div>
 
