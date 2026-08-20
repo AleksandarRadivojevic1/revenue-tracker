@@ -172,7 +172,7 @@ button { font-family: inherit; cursor: pointer; }
 /* ---------- KPI row ---------- */
 .kpi-row {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
   gap: 12px;
 }
 .kpi {
@@ -274,6 +274,30 @@ button { font-family: inherit; cursor: pointer; }
   color: var(--color-fog);
   padding: 40px 16px;
 }
+
+/* ---------- scheduled: mobile card list ---------- */
+.sched-cards { display: flex; flex-direction: column; }
+.sched-card { padding: 14px 16px; border-bottom: 1px solid var(--color-ash); }
+.sched-card:last-child { border-bottom: none; }
+.sched-card-top { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.sched-card-sub { color: var(--color-fog); font-size: 13px; margin-top: 4px; }
+.sched-card-foot { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; }
+
+/* ---------- overhead list ---------- */
+.overhead-list { display: flex; flex-direction: column; }
+.overhead-row {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding: 12px 16px; border-bottom: 1px solid var(--color-ash);
+}
+.overhead-row:last-child { border-bottom: none; }
+.oh-main { flex: 1; min-width: 150px; }
+.oh-label { font-weight: 500; }
+.oh-sub {
+  color: var(--color-fog); font-size: 12px; margin-top: 3px;
+  display: flex; align-items: center; gap: 6px; flex-wrap: wrap; text-transform: capitalize;
+}
+.oh-amount { font-weight: 600; white-space: nowrap; }
+.oh-actions { display: flex; gap: 4px; align-items: center; }
 
 /* ---------- toggle ---------- */
 .seg {

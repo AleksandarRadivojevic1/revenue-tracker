@@ -5,6 +5,7 @@ import {
   daysBetween,
   chargeStatus,
   chargeMrr,
+  overheadMonthly,
   paymentsRollup,
   projectRollup,
 } from './money.js';
@@ -82,6 +83,21 @@ describe('chargeMrr', () => {
   });
   it('expense contributes nothing', () => {
     expect(chargeMrr({ direction: 'expense', active: 1, frequency: 'monthly', amount: 50 })).toBe(0);
+  });
+});
+
+describe('overheadMonthly', () => {
+  it('monthly cost counts fully', () => {
+    expect(overheadMonthly({ active: 1, frequency: 'monthly', amount: 17 })).toBe(17);
+  });
+  it('yearly cost divided by 12', () => {
+    expect(overheadMonthly({ active: 1, frequency: 'yearly', amount: 120 })).toBe(10);
+  });
+  it('one_time contributes nothing', () => {
+    expect(overheadMonthly({ active: 1, frequency: 'one_time', amount: 300 })).toBe(0);
+  });
+  it('inactive contributes nothing', () => {
+    expect(overheadMonthly({ active: 0, frequency: 'monthly', amount: 17 })).toBe(0);
   });
 });
 

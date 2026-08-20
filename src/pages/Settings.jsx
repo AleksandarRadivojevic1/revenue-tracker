@@ -22,6 +22,8 @@ export default function Settings({ data, saveSettings }) {
       projects: data.projects,
       charges: data.charges,
       payments: data.payments,
+      overheads: data.overheads,
+      overhead_payments: data.overhead_payments,
       settings: data.settings,
     };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });

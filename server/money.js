@@ -47,6 +47,18 @@ export function chargeMrr(charge) {
 }
 
 /**
+ * Monthly-normalized cost of one active overhead (out-of-project expense).
+ * Mirrors chargeMrr but for costs: yearly is spread across 12 months,
+ * one_time recurs nothing. Inactive costs contribute nothing.
+ */
+export function overheadMonthly(overhead) {
+  if (!overhead.active) return 0;
+  if (overhead.frequency === 'monthly') return overhead.amount;
+  if (overhead.frequency === 'yearly') return overhead.amount / 12;
+  return 0; // one_time
+}
+
+/**
  * Roll up realized totals for a set of payments (actual money that moved).
  * Returns { revenue, expenses, profit }.
  */

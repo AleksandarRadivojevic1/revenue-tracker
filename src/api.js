@@ -32,5 +32,10 @@ export const api = {
   createPayment: (data) => req('POST', '/api/payments', data),
   deletePayment: (id) => req('DELETE', `/api/payments/${id}`),
 
+  createOverhead: (data) => req('POST', '/api/overheads', data),
+  updateOverhead: (id, data) => req('PUT', `/api/overheads/${id}`, data),
+  deleteOverhead: (id) => req('DELETE', `/api/overheads/${id}`),
+  payOverhead: (id, data) => req('POST', `/api/overheads/${id}/pay`, data || {}),
+
   updateSettings: (data) => req('PUT', '/api/settings', data),
 };

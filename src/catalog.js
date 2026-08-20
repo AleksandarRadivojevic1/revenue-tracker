@@ -69,6 +69,21 @@ export const EXPENSE_CATEGORIES = [
   { key: 'other', label: 'Other' },
 ];
 
+// Out-of-project costs (business overhead not tied to a client project).
+export const OVERHEAD_CATEGORIES = [
+  { key: 'tool', label: 'Tool / subscription' },
+  { key: 'hosting', label: 'Hosting' },
+  { key: 'domain', label: 'Domain' },
+  { key: 'other', label: 'Other' },
+];
+
+// Quick-add presets for common recurring costs. Amounts are editable.
+export const OVERHEAD_PRESETS = [
+  { key: 'claude', label: 'Claude Code', category: 'tool', amount: 17, frequency: 'monthly' },
+  { key: 'hosting', label: 'Hosting', category: 'hosting', amount: 5, frequency: 'monthly' },
+  { key: 'domain', label: 'Domain', category: 'domain', amount: 12, frequency: 'yearly' },
+];
+
 export const INCOME_CATEGORIES = [
   { key: 'build', label: 'Build' },
   { key: 'maintenance', label: 'Maintenance' },

@@ -45,6 +45,29 @@ db.exec(`
     note TEXT DEFAULT ''
   );
 
+  -- Out-of-project costs (business overhead): subscriptions, tools, hosting,
+  -- domains — expenses not tied to any single client project.
+  CREATE TABLE IF NOT EXISTS overheads (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    label TEXT NOT NULL,
+    category TEXT NOT NULL DEFAULT 'tool',   -- hosting | domain | tool | other
+    amount REAL NOT NULL DEFAULT 0,
+    frequency TEXT NOT NULL DEFAULT 'monthly', -- one_time | monthly | yearly
+    next_due TEXT,
+    active INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL DEFAULT (date('now'))
+  );
+
+  -- Realized overhead spend. Kept even if the overhead is deleted, so totals
+  -- never silently drop (ON DELETE SET NULL, not CASCADE).
+  CREATE TABLE IF NOT EXISTS overhead_payments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    overhead_id INTEGER REFERENCES overheads(id) ON DELETE SET NULL,
+    amount REAL NOT NULL DEFAULT 0,
+    paid_on TEXT NOT NULL DEFAULT (date('now')),
+    note TEXT DEFAULT ''
+  );
+
   CREATE TABLE IF NOT EXISTS settings (
     id INTEGER PRIMARY KEY CHECK (id = 1),
     base_currency TEXT NOT NULL DEFAULT 'EUR',

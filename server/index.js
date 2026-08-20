@@ -42,6 +42,8 @@ app.get('/api/bootstrap', h((_req, res) => {
     projects: all('SELECT * FROM projects ORDER BY created_at DESC, id DESC'),
     charges: all('SELECT * FROM charges ORDER BY id DESC'),
     payments: all('SELECT * FROM payments ORDER BY paid_on DESC, id DESC'),
+    overheads: all('SELECT * FROM overheads ORDER BY id DESC'),
+    overhead_payments: all('SELECT * FROM overhead_payments ORDER BY paid_on DESC, id DESC'),
     settings: readSettings(),
     today: today(),
   });
@@ -175,6 +177,76 @@ app.post('/api/payments', h((req, res) => {
 
 app.delete('/api/payments/:id', h((req, res) => {
   run('DELETE FROM payments WHERE id = ?', Number(req.params.id));
+  res.json({ ok: true });
+}));
+
+// --- overheads (out-of-project costs) --------------------------------------
+app.post('/api/overheads', h((req, res) => {
+  const { label = '', category = 'tool', amount = 0, frequency = 'monthly', next_due = null, active = 1 } = req.body;
+  if (!label || !label.trim()) throw new Error('label is required');
+  if (!VALID_FREQ.has(frequency)) throw new Error('invalid frequency');
+  if (Number.isNaN(Number(amount))) throw new Error('amount must be a number');
+  const info = run(
+    `INSERT INTO overheads (label, category, amount, frequency, next_due, active, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    label.trim(), category, Number(amount), frequency, next_due || null, active ? 1 : 0, today()
+  );
+  res.status(201).json(get('SELECT * FROM overheads WHERE id = ?', info.lastInsertRowid));
+}));
+
+app.put('/api/overheads/:id', h((req, res) => {
+  const existing = get('SELECT * FROM overheads WHERE id = ?', Number(req.params.id));
+  if (!existing) throw new Error('overhead not found');
+  const merged = { ...existing, ...req.body };
+  if (!merged.label || !String(merged.label).trim()) throw new Error('label is required');
+  if (!VALID_FREQ.has(merged.frequency)) throw new Error('invalid frequency');
+  run(
+    `UPDATE overheads SET label=?, category=?, amount=?, frequency=?, next_due=?, active=? WHERE id=?`,
+    String(merged.label).trim(), merged.category, Number(merged.amount),
+    merged.frequency, merged.next_due || null, merged.active ? 1 : 0, existing.id
+  );
+  res.json(get('SELECT * FROM overheads WHERE id = ?', existing.id));
+}));
+
+app.delete('/api/overheads/:id', h((req, res) => {
+  run('DELETE FROM overheads WHERE id = ?', Number(req.params.id));
+  res.json({ ok: true });
+}));
+
+// Mark an overhead paid: log a realized expense, then advance/close the schedule.
+app.post('/api/overheads/:id/pay', h((req, res) => {
+  const overhead = get('SELECT * FROM overheads WHERE id = ?', Number(req.params.id));
+  if (!overhead) throw new Error('overhead not found');
+  const paidOn = req.body?.paid_on || today();
+
+  db.exec('BEGIN');
+  try {
+    run(
+      `INSERT INTO overhead_payments (overhead_id, amount, paid_on, note)
+       VALUES (?, ?, ?, ?)`,
+      overhead.id, overhead.amount, paidOn, req.body?.note || `Paid: ${overhead.label}`
+    );
+
+    if (overhead.frequency === 'one_time') {
+      run('UPDATE overheads SET active = 0, next_due = NULL WHERE id = ?', overhead.id);
+    } else {
+      const base = overhead.next_due || paidOn;
+      run('UPDATE overheads SET next_due = ? WHERE id = ?', advanceDueDate(base, overhead.frequency), overhead.id);
+    }
+    db.exec('COMMIT');
+  } catch (e) {
+    db.exec('ROLLBACK');
+    throw e;
+  }
+
+  res.json({
+    overhead: get('SELECT * FROM overheads WHERE id = ?', overhead.id),
+    payment: get('SELECT * FROM overhead_payments ORDER BY id DESC LIMIT 1'),
+  });
+}));
+
+app.delete('/api/overhead-payments/:id', h((req, res) => {
+  run('DELETE FROM overhead_payments WHERE id = ?', Number(req.params.id));
   res.json({ ok: true });
 }));
 

@@ -69,6 +69,11 @@ export default function App() {
   async function payCharge(id) { await api.payCharge(id); await reload(); }
   async function deletePayment(id) { await api.deletePayment(id); await reload(); }
 
+  async function createOverhead(d) { await api.createOverhead(d); await reload(); }
+  async function updateOverhead(id, d) { await api.updateOverhead(id, d); await reload(); }
+  async function deleteOverhead(id) { await api.deleteOverhead(id); await reload(); }
+  async function payOverhead(id) { await api.payOverhead(id); await reload(); }
+
   async function toggleCurrency() {
     const next = settings.display_currency === 'EUR' ? 'RSD' : 'EUR';
     setData({ ...data, settings: { ...settings, display_currency: next } }); // optimistic
@@ -103,7 +108,9 @@ export default function App() {
 
       {view.name === 'dashboard' && (
         <Dashboard data={data} onOpenProject={(id) => go('project', id)}
-          createProject={createProject} payCharge={payCharge} />
+          createProject={createProject} payCharge={payCharge}
+          createOverhead={createOverhead} updateOverhead={updateOverhead}
+          deleteOverhead={deleteOverhead} payOverhead={payOverhead} />
       )}
       {view.name === 'project' && (
         <ProjectDetail data={data} projectId={view.projectId} onBack={() => go('dashboard')}
