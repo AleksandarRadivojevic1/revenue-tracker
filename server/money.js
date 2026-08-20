@@ -72,6 +72,29 @@ export function paymentsRollup(payments) {
   return { revenue, expenses, profit: revenue - expenses };
 }
 
+/**
+ * Realized totals grouped by calendar year (from paid_on). Project payments
+ * split by direction; overhead payments are all expenses. Returns an array of
+ * { year, revenue, expenses, profit }, newest year first.
+ */
+export function yearlyRollup(payments, overheadPayments = []) {
+  const byYear = new Map();
+  const bucket = (year) => {
+    if (!byYear.has(year)) byYear.set(year, { year, revenue: 0, expenses: 0, profit: 0 });
+    return byYear.get(year);
+  };
+  for (const p of payments) {
+    const b = bucket(p.paid_on.slice(0, 4));
+    if (p.direction === 'income') b.revenue += p.amount;
+    else if (p.direction === 'expense') b.expenses += p.amount;
+  }
+  for (const p of overheadPayments) {
+    bucket(p.paid_on.slice(0, 4)).expenses += p.amount;
+  }
+  for (const b of byYear.values()) b.profit = b.revenue - b.expenses;
+  return [...byYear.values()].sort((a, b) => b.year.localeCompare(a.year));
+}
+
 /** Per-project rollup: realized totals from payments + MRR from active charges. */
 export function projectRollup(charges, payments) {
   const base = paymentsRollup(payments);

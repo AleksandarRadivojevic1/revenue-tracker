@@ -7,6 +7,7 @@ import {
   chargeMrr,
   overheadMonthly,
   paymentsRollup,
+  yearlyRollup,
   projectRollup,
 } from './money.js';
 
@@ -112,6 +113,34 @@ describe('paymentsRollup', () => {
   });
   it('empty -> zeros', () => {
     expect(paymentsRollup([])).toEqual({ revenue: 0, expenses: 0, profit: 0 });
+  });
+});
+
+describe('yearlyRollup', () => {
+  it('groups realized payments by year, newest first', () => {
+    const r = yearlyRollup([
+      { direction: 'income', amount: 800, paid_on: '2026-03-01' },
+      { direction: 'income', amount: 50, paid_on: '2026-04-01' },
+      { direction: 'expense', amount: 20, paid_on: '2026-05-01' },
+      { direction: 'income', amount: 500, paid_on: '2025-11-01' },
+    ]);
+    expect(r).toEqual([
+      { year: '2026', revenue: 850, expenses: 20, profit: 830 },
+      { year: '2025', revenue: 500, expenses: 0, profit: 500 },
+    ]);
+  });
+  it('folds overhead payments into that year\'s expenses', () => {
+    const r = yearlyRollup(
+      [{ direction: 'income', amount: 100, paid_on: '2026-01-01' }],
+      [{ amount: 17, paid_on: '2026-02-01' }, { amount: 5, paid_on: '2025-12-01' }],
+    );
+    expect(r).toEqual([
+      { year: '2026', revenue: 100, expenses: 17, profit: 83 },
+      { year: '2025', revenue: 0, expenses: 5, profit: -5 },
+    ]);
+  });
+  it('empty -> empty array', () => {
+    expect(yearlyRollup([])).toEqual([]);
   });
 });
 

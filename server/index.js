@@ -175,6 +175,19 @@ app.post('/api/payments', h((req, res) => {
   res.status(201).json(get('SELECT * FROM payments WHERE id = ?', info.lastInsertRowid));
 }));
 
+app.put('/api/payments/:id', h((req, res) => {
+  const existing = get('SELECT * FROM payments WHERE id = ?', Number(req.params.id));
+  if (!existing) throw new Error('payment not found');
+  const merged = { ...existing, ...req.body };
+  if (Number.isNaN(Number(merged.amount))) throw new Error('amount must be a number');
+  // project_id, direction and charge_id are fixed — only amount/date/note are editable.
+  run(
+    'UPDATE payments SET amount=?, paid_on=?, note=? WHERE id=?',
+    Number(merged.amount), merged.paid_on || existing.paid_on, merged.note ?? existing.note, existing.id
+  );
+  res.json(get('SELECT * FROM payments WHERE id = ?', existing.id));
+}));
+
 app.delete('/api/payments/:id', h((req, res) => {
   run('DELETE FROM payments WHERE id = ?', Number(req.params.id));
   res.json({ ok: true });

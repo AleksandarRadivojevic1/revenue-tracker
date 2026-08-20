@@ -67,6 +67,7 @@ export default function App() {
   async function updateCharge(id, d) { await api.updateCharge(id, d); await reload(); }
   async function deleteCharge(id) { await api.deleteCharge(id); await reload(); }
   async function payCharge(id) { await api.payCharge(id); await reload(); }
+  async function updatePayment(id, d) { await api.updatePayment(id, d); await reload(); }
   async function deletePayment(id) { await api.deletePayment(id); await reload(); }
 
   async function createOverhead(d) { await api.createOverhead(d); await reload(); }
@@ -116,7 +117,7 @@ export default function App() {
         <ProjectDetail data={data} projectId={view.projectId} onBack={() => go('dashboard')}
           updateProject={updateProject} deleteProject={deleteProject}
           createCharge={createCharge} updateCharge={updateCharge} deleteCharge={deleteCharge}
-          payCharge={payCharge} deletePayment={deletePayment} />
+          payCharge={payCharge} updatePayment={updatePayment} deletePayment={deletePayment} />
       )}
       {view.name === 'settings' && (
         <Settings data={data} saveSettings={saveSettings} reload={reload} />

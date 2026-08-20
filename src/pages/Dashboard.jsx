@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { chargeStatus, chargeMrr, overheadMonthly, paymentsRollup } from '../../server/money.js';
+import { chargeStatus, chargeMrr, overheadMonthly, paymentsRollup, yearlyRollup } from '../../server/money.js';
 import { formatMoney, formatDate, FREQUENCY_LABEL } from '../format.js';
 import { packageMeta, OVERHEAD_CATEGORIES } from '../catalog.js';
 import StatusBadge from '../components/StatusBadge.jsx';
@@ -57,6 +57,8 @@ export default function Dashboard({
       .filter((r) => r.status === 'overdue' || r.status === 'due_soon')
       .sort((a, b) => a.next_due.localeCompare(b.next_due));
   }, [charges, overheads, today]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const yearly = useMemo(() => yearlyRollup(payments, overhead_payments), [payments, overhead_payments]);
 
   const activeOverheads = useMemo(
     () => overheads.filter((o) => o.active).sort((a, b) => (a.next_due || '').localeCompare(b.next_due || '')),
@@ -200,6 +202,34 @@ export default function Dashboard({
               </div>
             ))}
           </div>
+        )}
+      </div>
+
+      <h2 className="section-title">By year</h2>
+      <div className="card" style={{ padding: 0 }}>
+        {yearly.length === 0 ? (
+          <div className="empty">No payments logged yet.</div>
+        ) : (
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Year</th>
+                <th className="num">Revenue</th>
+                <th className="num">Expenses</th>
+                <th className="num">Profit</th>
+              </tr>
+            </thead>
+            <tbody>
+              {yearly.map((y) => (
+                <tr key={y.year}>
+                  <td style={{ fontWeight: 500 }}>{y.year}</td>
+                  <td className="num" style={{ color: 'var(--color-electric-blue)' }}>{formatMoney(y.revenue, settings)}</td>
+                  <td className="num">{formatMoney(y.expenses, settings)}</td>
+                  <td className="num" style={{ color: y.profit >= 0 ? 'var(--color-vivid-green)' : 'var(--color-tangerine)' }}>{formatMoney(y.profit, settings)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         )}
       </div>
 

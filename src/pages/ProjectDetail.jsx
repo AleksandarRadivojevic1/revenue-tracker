@@ -5,15 +5,17 @@ import { packageMeta } from '../catalog.js';
 import StatusBadge from '../components/StatusBadge.jsx';
 import ProjectForm from '../components/ProjectForm.jsx';
 import ChargeForm from '../components/ChargeForm.jsx';
+import PaymentForm from '../components/PaymentForm.jsx';
 
 export default function ProjectDetail({
   data, projectId, onBack,
-  updateProject, deleteProject, createCharge, updateCharge, deleteCharge, payCharge, deletePayment,
+  updateProject, deleteProject, createCharge, updateCharge, deleteCharge, payCharge, updatePayment, deletePayment,
 }) {
   const { settings, today } = data;
   const project = data.projects.find((p) => p.id === projectId);
   const [editProject, setEditProject] = useState(false);
   const [chargeModal, setChargeModal] = useState(null); // { initial?, defaultDirection }
+  const [editPayment, setEditPayment] = useState(null); // payment row being edited
   const [busyId, setBusyId] = useState(null);
 
   const charges = useMemo(() => data.charges.filter((c) => c.project_id === projectId), [data.charges, projectId]);
@@ -125,7 +127,10 @@ export default function ProjectDetail({
                         <div className="muted" style={{ fontSize: 12 }}>{formatDate(p.paid_on)} · {p.note}</div>
                       </td>
                       <td className="num">
-                        <button className="btn btn-sm btn-ghost btn-danger" onClick={() => deletePayment(p.id)}>✕</button>
+                        <div className="row-actions">
+                          <button className="btn btn-sm btn-ghost" onClick={() => setEditPayment(p)}>Edit</button>
+                          <button className="btn btn-sm btn-ghost btn-danger" onClick={() => deletePayment(p.id)}>✕</button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -149,6 +154,13 @@ export default function ProjectDetail({
             ? updateCharge(chargeModal.initial.id, d)
             : createCharge({ ...d, project_id: project.id })}
           onClose={() => setChargeModal(null)}
+        />
+      )}
+      {editPayment && (
+        <PaymentForm
+          initial={editPayment}
+          onSubmit={(d) => updatePayment(editPayment.id, d)}
+          onClose={() => setEditPayment(null)}
         />
       )}
     </main>

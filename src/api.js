@@ -30,6 +30,7 @@ export const api = {
   payCharge: (id, data) => req('POST', `/api/charges/${id}/pay`, data || {}),
 
   createPayment: (data) => req('POST', '/api/payments', data),
+  updatePayment: (id, data) => req('PUT', `/api/payments/${id}`, data),
   deletePayment: (id) => req('DELETE', `/api/payments/${id}`),
 
   createOverhead: (data) => req('POST', '/api/overheads', data),
