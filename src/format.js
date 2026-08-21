@@ -19,9 +19,10 @@ export function formatMoney(amountEur, settings) {
 
 export function formatDate(iso) {
   if (!iso) return '—';
+  // Serbian day-first numeric format: dd/mm/yyyy (en-GB gives exactly this).
   return new Date(iso + 'T00:00:00').toLocaleDateString('en-GB', {
     day: '2-digit',
-    month: 'short',
+    month: '2-digit',
     year: 'numeric',
   });
 }
