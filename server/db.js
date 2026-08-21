@@ -68,6 +68,27 @@ db.exec(`
     note TEXT DEFAULT ''
   );
 
+  -- Issued invoices / proformas. Immutable once created: seller, buyer, line
+  -- items and the EUR→RSD rate are all snapshotted as JSON at issue time, so a
+  -- later edit to a charge or the exchange rate never changes a past document.
+  CREATE TABLE IF NOT EXISTS invoices (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    number TEXT NOT NULL,                      -- YYYY-NNN, sequential per year
+    kind TEXT NOT NULL DEFAULT 'predracun',    -- predracun | racun
+    project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL,
+    issued_on TEXT NOT NULL DEFAULT (date('now')),
+    supply_date TEXT,
+    place TEXT DEFAULT '',
+    currency TEXT NOT NULL DEFAULT 'RSD',       -- RSD | EUR | BOTH
+    eur_to_rsd REAL NOT NULL DEFAULT 0,         -- rate snapshot used for RSD figures
+    seller_json TEXT NOT NULL DEFAULT '{}',
+    buyer_json TEXT NOT NULL DEFAULT '{}',
+    items_json TEXT NOT NULL DEFAULT '[]',      -- [{description, qty, unit_eur, amount_eur}]
+    subtotal_eur REAL NOT NULL DEFAULT 0,
+    note TEXT DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT (date('now'))
+  );
+
   CREATE TABLE IF NOT EXISTS settings (
     id INTEGER PRIMARY KEY CHECK (id = 1),
     base_currency TEXT NOT NULL DEFAULT 'EUR',
@@ -86,5 +107,18 @@ function ensureColumn(table, column, def) {
   }
 }
 ensureColumn('projects', 'package', "TEXT DEFAULT ''");
+
+// Seller (my business) details for invoices — live on the single settings row.
+ensureColumn('settings', 'seller_name', "TEXT DEFAULT ''");
+ensureColumn('settings', 'seller_address', "TEXT DEFAULT ''");
+ensureColumn('settings', 'seller_pib', "TEXT DEFAULT ''");   // presence flips predracun -> racun
+ensureColumn('settings', 'seller_mb', "TEXT DEFAULT ''");
+ensureColumn('settings', 'seller_bank', "TEXT DEFAULT ''");
+ensureColumn('settings', 'seller_note', "TEXT DEFAULT ''");
+
+// Buyer (client) legal details, per project.
+ensureColumn('projects', 'client_address', "TEXT DEFAULT ''");
+ensureColumn('projects', 'client_pib', "TEXT DEFAULT ''");
+ensureColumn('projects', 'client_mb', "TEXT DEFAULT ''");
 
 export default db;

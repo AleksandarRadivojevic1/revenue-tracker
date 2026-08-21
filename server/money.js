@@ -106,3 +106,22 @@ export function projectRollup(charges, payments) {
 export function dashboardRollup(charges, payments) {
   return projectRollup(charges, payments);
 }
+
+/** Line amount for one invoice item: quantity × unit price (EUR). */
+export function invoiceItemAmount(item) {
+  return (Number(item.qty) || 0) * (Number(item.unit_eur) || 0);
+}
+
+/** Sum of all invoice line amounts (EUR). */
+export function invoiceSubtotal(items) {
+  return items.reduce((s, i) => s + invoiceItemAmount(i), 0);
+}
+
+/** Next per-year invoice number (YYYY-NNN) given the numbers already used. */
+export function nextInvoiceNumber(existingNumbers, year) {
+  const prefix = `${year}-`;
+  const maxSeq = existingNumbers
+    .filter((n) => n.startsWith(prefix))
+    .reduce((m, n) => Math.max(m, Number(n.slice(prefix.length)) || 0), 0);
+  return `${year}-${String(maxSeq + 1).padStart(3, '0')}`;
+}

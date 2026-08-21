@@ -3,6 +3,7 @@ import { api } from './api.js';
 import Dashboard from './pages/Dashboard.jsx';
 import ProjectDetail from './pages/ProjectDetail.jsx';
 import Settings from './pages/Settings.jsx';
+import Invoices from './pages/Invoices.jsx';
 
 function addMonthsIso(iso, months) {
   const [y, m, d] = iso.split('-').map(Number);
@@ -70,6 +71,9 @@ export default function App() {
   async function updatePayment(id, d) { await api.updatePayment(id, d); await reload(); }
   async function deletePayment(id) { await api.deletePayment(id); await reload(); }
 
+  async function createInvoice(d) { const inv = await api.createInvoice(d); await reload(); return inv; }
+  async function deleteInvoice(id) { await api.deleteInvoice(id); await reload(); }
+
   async function createOverhead(d) { await api.createOverhead(d); await reload(); }
   async function updateOverhead(id, d) { await api.updateOverhead(id, d); await reload(); }
   async function deleteOverhead(id) { await api.deleteOverhead(id); await reload(); }
@@ -97,6 +101,7 @@ export default function App() {
           </div>
           <nav>
             <button className={`nav-btn ${view.name === 'dashboard' ? 'active' : ''}`} onClick={() => go('dashboard')}>Dashboard</button>
+            <button className={`nav-btn ${view.name === 'invoices' ? 'active' : ''}`} onClick={() => go('invoices')}>Invoices</button>
             <button className={`nav-btn ${view.name === 'settings' ? 'active' : ''}`} onClick={() => go('settings')}>Settings</button>
           </nav>
           <div className="spacer" />
@@ -118,6 +123,9 @@ export default function App() {
           updateProject={updateProject} deleteProject={deleteProject}
           createCharge={createCharge} updateCharge={updateCharge} deleteCharge={deleteCharge}
           payCharge={payCharge} updatePayment={updatePayment} deletePayment={deletePayment} />
+      )}
+      {view.name === 'invoices' && (
+        <Invoices data={data} createInvoice={createInvoice} deleteInvoice={deleteInvoice} />
       )}
       {view.name === 'settings' && (
         <Settings data={data} saveSettings={saveSettings} reload={reload} />

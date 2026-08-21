@@ -33,6 +33,9 @@ export const api = {
   updatePayment: (id, data) => req('PUT', `/api/payments/${id}`, data),
   deletePayment: (id) => req('DELETE', `/api/payments/${id}`),
 
+  createInvoice: (data) => req('POST', '/api/invoices', data),
+  deleteInvoice: (id) => req('DELETE', `/api/invoices/${id}`),
+
   createOverhead: (data) => req('POST', '/api/overheads', data),
   updateOverhead: (id, data) => req('PUT', `/api/overheads/${id}`, data),
   deleteOverhead: (id) => req('DELETE', `/api/overheads/${id}`),

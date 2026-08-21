@@ -1,11 +1,25 @@
 import { useState } from 'react';
 import { formatMoney } from '../format.js';
 
+const SELLER_FIELDS = [
+  ['seller_name', 'Naziv (ime / firma)', 'Aleksandar Radivojević PR'],
+  ['seller_address', 'Adresa', 'Ulica i broj, grad'],
+  ['seller_pib', 'PIB', '9 cifara — postavlja se → računi'],
+  ['seller_mb', 'Matični broj (MB)', '8 cifara'],
+  ['seller_bank', 'Tekući račun', '160-0000000000000-00'],
+  ['seller_note', 'Napomena (podrazumevana)', 'Optional default note'],
+];
+
 export default function Settings({ data, saveSettings }) {
   const { settings } = data;
   const [rate, setRate] = useState(settings.eur_to_rsd);
   const [saved, setSaved] = useState(false);
   const [err, setErr] = useState('');
+  const [seller, setSeller] = useState(
+    Object.fromEntries(SELLER_FIELDS.map(([k]) => [k, settings[k] || '']))
+  );
+  const [sellerSaved, setSellerSaved] = useState(false);
+  const setSellerField = (k) => (e) => setSeller({ ...seller, [k]: e.target.value });
 
   async function save() {
     setErr(''); setSaved(false);
@@ -13,6 +27,15 @@ export default function Settings({ data, saveSettings }) {
       await saveSettings({ eur_to_rsd: Number(rate) });
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
+    } catch (e) { setErr(e.message); }
+  }
+
+  async function saveSeller() {
+    setErr(''); setSellerSaved(false);
+    try {
+      await saveSettings(seller);
+      setSellerSaved(true);
+      setTimeout(() => setSellerSaved(false), 2000);
     } catch (e) { setErr(e.message); }
   }
 
@@ -70,6 +93,23 @@ export default function Settings({ data, saveSettings }) {
           </p>
           <button className="btn" onClick={exportJson}>⬇ Export JSON snapshot</button>
         </div>
+      </div>
+
+      <h2 className="section-title">Business details (Prodavac)</h2>
+      <div className="card">
+        <p className="page-sub" style={{ marginTop: 0 }}>
+          Printed on invoices as the seller. Filling <strong>PIB</strong> switches issued documents from
+          <em> predračun</em> to <em>račun</em>.
+        </p>
+        {SELLER_FIELDS.map(([k, label, placeholder]) => (
+          <div className="field" key={k}>
+            <label>{label}</label>
+            <input className="input" value={seller[k]} onChange={setSellerField(k)} placeholder={placeholder} />
+          </div>
+        ))}
+        <button className="btn btn-primary" onClick={saveSeller}>Save business details</button>
+        {sellerSaved && <p className="inline-note" style={{ color: 'var(--color-vivid-green)' }}>Saved.</p>}
+        {err && <div className="form-error" style={{ marginTop: 10 }}>{err}</div>}
       </div>
     </main>
   );

@@ -9,6 +9,9 @@ import {
   paymentsRollup,
   yearlyRollup,
   projectRollup,
+  invoiceItemAmount,
+  invoiceSubtotal,
+  nextInvoiceNumber,
 } from './money.js';
 
 describe('addMonths', () => {
@@ -141,6 +144,32 @@ describe('yearlyRollup', () => {
   });
   it('empty -> empty array', () => {
     expect(yearlyRollup([])).toEqual([]);
+  });
+});
+
+describe('invoice line math', () => {
+  it('item amount = qty × unit', () => {
+    expect(invoiceItemAmount({ qty: 12, unit_eur: 50 })).toBe(600);
+    expect(invoiceItemAmount({ qty: 1, unit_eur: 800 })).toBe(800);
+  });
+  it('subtotal sums line amounts', () => {
+    expect(invoiceSubtotal([{ qty: 1, unit_eur: 800 }, { qty: 12, unit_eur: 50 }])).toBe(1400);
+  });
+  it('tolerates missing/blank fields', () => {
+    expect(invoiceItemAmount({})).toBe(0);
+    expect(invoiceSubtotal([])).toBe(0);
+  });
+});
+
+describe('nextInvoiceNumber', () => {
+  it('first of the year -> 001', () => {
+    expect(nextInvoiceNumber([], '2026')).toBe('2026-001');
+  });
+  it('increments the max of that year only', () => {
+    expect(nextInvoiceNumber(['2026-001', '2026-002', '2025-009'], '2026')).toBe('2026-003');
+  });
+  it('resets per year', () => {
+    expect(nextInvoiceNumber(['2025-004'], '2026')).toBe('2026-001');
   });
 });
 

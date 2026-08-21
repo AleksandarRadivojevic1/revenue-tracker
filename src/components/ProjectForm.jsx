@@ -14,6 +14,9 @@ export default function ProjectForm({ initial, settings, onSubmit, onClose }) {
     status: initial?.status || 'active',
     package: initial?.package || '',
     notes: initial?.notes || '',
+    client_address: initial?.client_address || '',
+    client_pib: initial?.client_pib || '',
+    client_mb: initial?.client_mb || '',
   });
 
   // new-project-only: auto-create build + maintenance charges
@@ -206,6 +209,28 @@ export default function ProjectForm({ initial, settings, onSubmit, onClose }) {
         <label>Notes</label>
         <textarea className="input" rows={2} value={form.notes} onChange={set('notes')} />
       </div>
+
+      <details style={{ marginTop: 4 }}>
+        <summary style={{ cursor: 'pointer', fontSize: 13, fontWeight: 600, color: 'var(--color-steel)' }}>
+          Billing details (for invoices)
+        </summary>
+        <div style={{ marginTop: 12 }}>
+          <div className="field">
+            <label>Client address</label>
+            <input className="input" value={form.client_address} onChange={set('client_address')} placeholder="Ulica i broj, grad" />
+          </div>
+          <div className="field-row">
+            <div className="field">
+              <label>PIB</label>
+              <input className="input" value={form.client_pib} onChange={set('client_pib')} placeholder="9 cifara" />
+            </div>
+            <div className="field">
+              <label>Matični broj (MB)</label>
+              <input className="input" value={form.client_mb} onChange={set('client_mb')} placeholder="8 cifara" />
+            </div>
+          </div>
+        </div>
+      </details>
     </Modal>
   );
 }

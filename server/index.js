@@ -3,7 +3,7 @@ import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import db from './db.js';
-import { advanceDueDate } from './money.js';
+import { advanceDueDate, invoiceItemAmount, invoiceSubtotal, nextInvoiceNumber } from './money.js';
 import { basicAuth } from './auth.js';
 import { scheduleBackups } from './backup.js';
 
@@ -44,6 +44,7 @@ app.get('/api/bootstrap', h((_req, res) => {
     payments: all('SELECT * FROM payments ORDER BY paid_on DESC, id DESC'),
     overheads: all('SELECT * FROM overheads ORDER BY id DESC'),
     overhead_payments: all('SELECT * FROM overhead_payments ORDER BY paid_on DESC, id DESC'),
+    invoices: all('SELECT * FROM invoices ORDER BY created_at DESC, id DESC'),
     settings: readSettings(),
     today: today(),
   });
@@ -55,12 +56,15 @@ app.get('/api/projects', h((_req, res) => {
 }));
 
 app.post('/api/projects', h((req, res) => {
-  const { name, client = '', url = '', status = 'active', package: pkg = '', notes = '' } = req.body;
+  const {
+    name, client = '', url = '', status = 'active', package: pkg = '', notes = '',
+    client_address = '', client_pib = '', client_mb = '',
+  } = req.body;
   if (!name || !name.trim()) throw new Error('name is required');
   const info = run(
-    `INSERT INTO projects (name, client, url, status, package, notes, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    name.trim(), client, url, status, pkg, notes, today()
+    `INSERT INTO projects (name, client, url, status, package, notes, client_address, client_pib, client_mb, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    name.trim(), client, url, status, pkg, notes, client_address, client_pib, client_mb, today()
   );
   res.status(201).json(get('SELECT * FROM projects WHERE id = ?', info.lastInsertRowid));
 }));
@@ -68,10 +72,10 @@ app.post('/api/projects', h((req, res) => {
 app.put('/api/projects/:id', h((req, res) => {
   const existing = get('SELECT * FROM projects WHERE id = ?', Number(req.params.id));
   if (!existing) throw new Error('project not found');
-  const { name, client, url, status, package: pkg, notes } = { ...existing, ...req.body };
+  const { name, client, url, status, package: pkg, notes, client_address, client_pib, client_mb } = { ...existing, ...req.body };
   run(
-    `UPDATE projects SET name=?, client=?, url=?, status=?, package=?, notes=? WHERE id=?`,
-    name, client, url, status, pkg, notes, existing.id
+    `UPDATE projects SET name=?, client=?, url=?, status=?, package=?, notes=?, client_address=?, client_pib=?, client_mb=? WHERE id=?`,
+    name, client, url, status, pkg, notes, client_address, client_pib, client_mb, existing.id
   );
   res.json(get('SELECT * FROM projects WHERE id = ?', existing.id));
 }));
@@ -263,14 +267,68 @@ app.delete('/api/overhead-payments/:id', h((req, res) => {
   res.json({ ok: true });
 }));
 
+// --- invoices --------------------------------------------------------------
+const VALID_CURRENCY = new Set(['RSD', 'EUR', 'BOTH']);
+
+app.post('/api/invoices', h((req, res) => {
+  const { project_id, supply_date = null, place = '', currency = 'RSD', note = '', items = [] } = req.body;
+  const project = get('SELECT * FROM projects WHERE id = ?', project_id);
+  if (!project) throw new Error('invalid project_id');
+  if (!VALID_CURRENCY.has(currency)) throw new Error('currency must be RSD, EUR or BOTH');
+
+  const cleanItems = (Array.isArray(items) ? items : []).map((i) => ({
+    description: String(i.description || '').trim(),
+    qty: Number(i.qty) || 0,
+    unit_eur: Number(i.unit_eur) || 0,
+    amount_eur: invoiceItemAmount(i),
+  }));
+  if (cleanItems.length === 0) throw new Error('at least one line item is required');
+  if (cleanItems.some((i) => !i.description)) throw new Error('every line item needs a description');
+
+  const s = readSettings();
+  const seller = {
+    name: s.seller_name, address: s.seller_address, pib: s.seller_pib,
+    mb: s.seller_mb, bank: s.seller_bank, note: s.seller_note,
+  };
+  const buyer = {
+    name: project.client || project.name, project: project.name,
+    address: project.client_address, pib: project.client_pib, mb: project.client_mb,
+  };
+  // A racun requires a registered issuer (PIB); until then it is a predracun.
+  const kind = seller.pib && seller.pib.trim() ? 'racun' : 'predracun';
+
+  const issued = today();
+  const existing = all('SELECT number FROM invoices').map((r) => r.number);
+  const number = nextInvoiceNumber(existing, issued.slice(0, 4));
+
+  const info = run(
+    `INSERT INTO invoices
+       (number, kind, project_id, issued_on, supply_date, place, currency, eur_to_rsd,
+        seller_json, buyer_json, items_json, subtotal_eur, note, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    number, kind, project.id, issued, supply_date || issued, place, currency, Number(s.eur_to_rsd) || 0,
+    JSON.stringify(seller), JSON.stringify(buyer), JSON.stringify(cleanItems),
+    invoiceSubtotal(cleanItems), note, issued
+  );
+  res.status(201).json(get('SELECT * FROM invoices WHERE id = ?', info.lastInsertRowid));
+}));
+
+app.delete('/api/invoices/:id', h((req, res) => {
+  run('DELETE FROM invoices WHERE id = ?', Number(req.params.id));
+  res.json({ ok: true });
+}));
+
 // --- settings --------------------------------------------------------------
 app.put('/api/settings', h((req, res) => {
   const cur = readSettings();
-  const { base_currency, eur_to_rsd, display_currency } = { ...cur, ...req.body };
-  if (Number(eur_to_rsd) <= 0) throw new Error('eur_to_rsd must be positive');
+  const m = { ...cur, ...req.body };
+  if (Number(m.eur_to_rsd) <= 0) throw new Error('eur_to_rsd must be positive');
   run(
-    'UPDATE settings SET base_currency=?, eur_to_rsd=?, display_currency=? WHERE id=1',
-    base_currency, Number(eur_to_rsd), display_currency
+    `UPDATE settings SET base_currency=?, eur_to_rsd=?, display_currency=?,
+       seller_name=?, seller_address=?, seller_pib=?, seller_mb=?, seller_bank=?, seller_note=?
+     WHERE id=1`,
+    m.base_currency, Number(m.eur_to_rsd), m.display_currency,
+    m.seller_name, m.seller_address, m.seller_pib, m.seller_mb, m.seller_bank, m.seller_note
   );
   res.json(readSettings());
 }));
