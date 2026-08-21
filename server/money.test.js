@@ -11,6 +11,7 @@ import {
   projectRollup,
   invoiceItemAmount,
   invoiceSubtotal,
+  invoiceTotals,
   nextInvoiceNumber,
 } from './money.js';
 
@@ -158,6 +159,24 @@ describe('invoice line math', () => {
   it('tolerates missing/blank fields', () => {
     expect(invoiceItemAmount({})).toBe(0);
     expect(invoiceSubtotal([])).toBe(0);
+  });
+});
+
+describe('invoiceTotals', () => {
+  const items = [{ qty: 1, unit_eur: 800 }, { qty: 12, unit_eur: 50 }]; // subtotal 1400
+
+  it('no rate -> pdv 0, total == subtotal (non-PDV issuer)', () => {
+    expect(invoiceTotals(items)).toEqual({ subtotal: 1400, pdv: 0, total: 1400 });
+    expect(invoiceTotals(items, 0)).toEqual({ subtotal: 1400, pdv: 0, total: 1400 });
+  });
+  it('20% rate -> osnovica + PDV = ukupno', () => {
+    expect(invoiceTotals(items, 20)).toEqual({ subtotal: 1400, pdv: 280, total: 1680 });
+  });
+  it('lower 10% rate', () => {
+    expect(invoiceTotals([{ qty: 1, unit_eur: 100 }], 10)).toEqual({ subtotal: 100, pdv: 10, total: 110 });
+  });
+  it('empty items -> all zero', () => {
+    expect(invoiceTotals([], 20)).toEqual({ subtotal: 0, pdv: 0, total: 0 });
   });
 });
 

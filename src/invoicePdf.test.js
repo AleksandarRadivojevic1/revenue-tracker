@@ -39,6 +39,25 @@ describe('buildInvoiceDocDefinition', () => {
     expect(text).toContain('Predračun nije poreski dokument.');
   });
 
+  it('breaks out PDV (osnovica / PDV / ukupno) when the invoice carries a rate', () => {
+    const text = allText(buildInvoiceDocDefinition({
+      ...base, kind: 'racun', currency: 'EUR', pdv_rate: 20, pdv_eur: 160, total_eur: 960,
+    })).join('\n');
+    expect(text).toContain('Osnovica');
+    expect(text).toContain('PDV (20%)');
+    expect(text).toContain('160,00 €'); // PDV amount
+    expect(text).toContain('960,00 €'); // ukupno with PDV
+    expect(text).not.toContain('PDV nije obračunat');
+  });
+
+  it('notes the export exemption for a foreign-client invoice', () => {
+    const text = allText(buildInvoiceDocDefinition({
+      ...base, kind: 'racun', currency: 'EUR', pdv_exempt: 1,
+    })).join('\n');
+    expect(text).toContain('izvoz usluga');
+    expect(text).not.toContain('PDV nije obračunat');
+  });
+
   it('BOTH currency shows RSD (converted) and EUR, and prints the rate', () => {
     const text = allText(buildInvoiceDocDefinition({ ...base, kind: 'racun', currency: 'BOTH' })).join('\n');
     expect(text).toContain('93.600,00 RSD'); // 800 × 117

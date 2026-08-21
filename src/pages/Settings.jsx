@@ -20,6 +20,9 @@ export default function Settings({ data, saveSettings }) {
   );
   const [sellerSaved, setSellerSaved] = useState(false);
   const setSellerField = (k) => (e) => setSeller({ ...seller, [k]: e.target.value });
+  const [pdvObveznik, setPdvObveznik] = useState(!!settings.pdv_obveznik);
+  const [pdvRate, setPdvRate] = useState(settings.pdv_rate ?? 20);
+  const [pdvSaved, setPdvSaved] = useState(false);
 
   async function save() {
     setErr(''); setSaved(false);
@@ -36,6 +39,15 @@ export default function Settings({ data, saveSettings }) {
       await saveSettings(seller);
       setSellerSaved(true);
       setTimeout(() => setSellerSaved(false), 2000);
+    } catch (e) { setErr(e.message); }
+  }
+
+  async function savePdv() {
+    setErr(''); setPdvSaved(false);
+    try {
+      await saveSettings({ pdv_obveznik: pdvObveznik ? 1 : 0, pdv_rate: Number(pdvRate) });
+      setPdvSaved(true);
+      setTimeout(() => setPdvSaved(false), 2000);
     } catch (e) { setErr(e.message); }
   }
 
@@ -110,6 +122,28 @@ export default function Settings({ data, saveSettings }) {
         <button className="btn btn-primary" onClick={saveSeller}>Save business details</button>
         {sellerSaved && <p className="inline-note" style={{ color: 'var(--color-vivid-green)' }}>Saved.</p>}
         {err && <div className="form-error" style={{ marginTop: 10 }}>{err}</div>}
+      </div>
+
+      <h2 className="section-title">PDV (VAT)</h2>
+      <div className="card">
+        <p className="page-sub" style={{ marginTop: 0 }}>
+          Turn this on <strong>only</strong> once you're actually in the PDV system (prometom preko
+          praga ili dobrovoljno). While off, invoices carry no PDV and print as before. Past invoices
+          keep the rate they were issued with — flipping this never changes them.
+        </p>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+          <input type="checkbox" checked={pdvObveznik} onChange={(e) => setPdvObveznik(e.target.checked)} />
+          <span>Obveznik PDV-a (u sistemu PDV-a)</span>
+        </label>
+        <div className="field-row" style={{ alignItems: 'flex-end' }}>
+          <div className="field" style={{ marginBottom: 0 }}>
+            <label>Opšta stopa PDV-a (%)</label>
+            <input className="input" type="number" step="0.1" min="0" value={pdvRate}
+              disabled={!pdvObveznik} onChange={(e) => setPdvRate(e.target.value)} />
+          </div>
+          <button className="btn btn-primary" onClick={savePdv} style={{ marginBottom: 0 }}>Save PDV settings</button>
+        </div>
+        {pdvSaved && <p className="inline-note" style={{ color: 'var(--color-vivid-green)' }}>Saved.</p>}
       </div>
     </main>
   );

@@ -31,6 +31,8 @@ export function buildInvoiceDocDefinition(invoice) {
   const { currency, eur_to_rsd: rate } = invoice;
   const isRacun = invoice.kind === 'racun';
   const title = isRacun ? 'RAČUN' : 'PREDRAČUN';
+  const pdvRate = Number(invoice.pdv_rate) || 0;
+  const totalEur = invoice.total_eur || invoice.subtotal_eur; // fallback for pre-PDV rows
 
   const body = [
     [
@@ -49,7 +51,13 @@ export function buildInvoiceDocDefinition(invoice) {
 
   const notes = [];
   if (!isRacun) notes.push('Predračun nije poreski dokument.');
-  notes.push('PDV nije obračunat — obveznik nije u sistemu PDV-a.');
+  if (pdvRate > 0) {
+    // PDV is broken out in the totals — no disclaimer needed.
+  } else if (invoice.pdv_exempt) {
+    notes.push('PDV se ne obračunava — promet usluga u inostranstvu (izvoz usluga).');
+  } else {
+    notes.push('PDV nije obračunat — obveznik nije u sistemu PDV-a.');
+  }
   if (currency !== 'EUR') notes.push(`Preračunato po kursu 1 € = ${nf(2, 2).format(rate)} RSD.`);
   if (seller.bank) notes.push(`Uplata na tekući račun: ${seller.bank}   Poziv na broj: ${invoice.number}`);
   if (invoice.note) notes.push(invoice.note);
@@ -88,7 +96,16 @@ export function buildInvoiceDocDefinition(invoice) {
           { width: '*', text: '' },
           {
             width: 'auto',
-            table: { widths: ['auto', 'auto'], body: [[{ text: 'UKUPNO', style: 'totalLabel' }, { text: money(invoice.subtotal_eur, currency, rate), style: 'totalValue', alignment: 'right' }]] },
+            table: {
+              widths: ['auto', 'auto'],
+              body: pdvRate > 0
+                ? [
+                    [{ text: 'Osnovica', style: 'totalLabel' }, { text: money(invoice.subtotal_eur, currency, rate), alignment: 'right' }],
+                    [{ text: `PDV (${nf(0, 2).format(pdvRate)}%)`, style: 'totalLabel' }, { text: money(invoice.pdv_eur, currency, rate), alignment: 'right' }],
+                    [{ text: 'UKUPNO', style: 'totalLabel' }, { text: money(totalEur, currency, rate), style: 'totalValue', alignment: 'right' }],
+                  ]
+                : [[{ text: 'UKUPNO', style: 'totalLabel' }, { text: money(totalEur, currency, rate), style: 'totalValue', alignment: 'right' }]],
+            },
             layout: 'noBorders',
             margin: [0, 10, 0, 0],
           },

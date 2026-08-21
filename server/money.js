@@ -117,6 +117,17 @@ export function invoiceSubtotal(items) {
   return items.reduce((s, i) => s + invoiceItemAmount(i), 0);
 }
 
+/**
+ * Invoice money totals in EUR. Line amounts are net (poreska osnovica).
+ * `pdvRate` is a percentage (e.g. 20 or 10); pass 0 for a non-PDV issuer or an
+ * exempt (foreign / izvoz usluga) invoice. Returns { subtotal, pdv, total }.
+ */
+export function invoiceTotals(items, pdvRate = 0) {
+  const subtotal = invoiceSubtotal(items);
+  const pdv = subtotal * ((Number(pdvRate) || 0) / 100);
+  return { subtotal, pdv, total: subtotal + pdv };
+}
+
 /** Next per-year invoice number (YYYY-NNN) given the numbers already used. */
 export function nextInvoiceNumber(existingNumbers, year) {
   const prefix = `${year}-`;

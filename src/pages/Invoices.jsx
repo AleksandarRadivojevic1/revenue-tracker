@@ -76,6 +76,7 @@ function InvoiceForm({ projects, charges, settings, onSubmit, onClose }) {
   const [currency, setCurrency] = useState('RSD');
   const [note, setNote] = useState('');
   const [lines, setLines] = useState([]);
+  const [exempt, setExempt] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -102,6 +103,10 @@ function InvoiceForm({ projects, charges, settings, onSubmit, onClose }) {
     .filter((l) => l.include)
     .reduce((s, l) => s + (Number(l.qty) || 0) * (Number(l.unit_eur) || 0), 0);
 
+  // PDV preview — only when in the PDV system and the invoice isn't exempt.
+  const pdvRate = settings.pdv_obveznik && !exempt ? (Number(settings.pdv_rate) || 0) : 0;
+  const pdv = total * pdvRate / 100;
+
   async function submit() {
     const items = lines
       .filter((l) => l.include && l.description.trim())
@@ -110,7 +115,7 @@ function InvoiceForm({ projects, charges, settings, onSubmit, onClose }) {
     if (items.length === 0) { setError('Add at least one line item with a description.'); return; }
     setBusy(true); setError('');
     try {
-      await onSubmit({ project_id: Number(projectId), supply_date: supplyDate, place, currency, note, items });
+      await onSubmit({ project_id: Number(projectId), supply_date: supplyDate, place, currency, note, items, pdv_exempt: exempt });
       onClose();
     } catch (e) { setError(e.message); setBusy(false); }
   }
@@ -169,9 +174,24 @@ function InvoiceForm({ projects, charges, settings, onSubmit, onClose }) {
         <button className="btn btn-sm btn-ghost" onClick={addLine}>+ Add line</button>
       </div>
 
-      <div className="kv" style={{ borderTop: '1px solid var(--color-ash)', paddingTop: 10 }}>
-        <span className="k">Total (EUR base)</span>
-        <span className="v">{formatMoney(total, settings)}</span>
+      {settings.pdv_obveznik ? (
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
+          <input type="checkbox" checked={exempt} onChange={(e) => setExempt(e.target.checked)} />
+          <span>PDV se ne obračunava (inostrani kupac / izvoz usluga)</span>
+        </label>
+      ) : null}
+
+      <div style={{ borderTop: '1px solid var(--color-ash)', paddingTop: 10, marginTop: 10 }}>
+        {pdvRate > 0 && (
+          <>
+            <div className="kv"><span className="k">Osnovica</span><span className="v">{formatMoney(total, settings)}</span></div>
+            <div className="kv"><span className="k">PDV ({pdvRate}%)</span><span className="v">{formatMoney(pdv, settings)}</span></div>
+          </>
+        )}
+        <div className="kv">
+          <span className="k">{pdvRate > 0 ? 'Ukupno (sa PDV-om)' : 'Total (EUR base)'}</span>
+          <span className="v">{formatMoney(total + pdv, settings)}</span>
+        </div>
       </div>
 
       <div className="field" style={{ marginTop: 12 }}>

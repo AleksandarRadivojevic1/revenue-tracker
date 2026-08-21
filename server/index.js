@@ -3,7 +3,7 @@ import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import db from './db.js';
-import { advanceDueDate, invoiceItemAmount, invoiceSubtotal, nextInvoiceNumber } from './money.js';
+import { advanceDueDate, invoiceItemAmount, invoiceTotals, nextInvoiceNumber } from './money.js';
 import { basicAuth } from './auth.js';
 import { scheduleBackups } from './backup.js';
 
@@ -271,7 +271,7 @@ app.delete('/api/overhead-payments/:id', h((req, res) => {
 const VALID_CURRENCY = new Set(['RSD', 'EUR', 'BOTH']);
 
 app.post('/api/invoices', h((req, res) => {
-  const { project_id, supply_date = null, place = '', currency = 'RSD', note = '', items = [] } = req.body;
+  const { project_id, supply_date = null, place = '', currency = 'RSD', note = '', items = [], pdv_exempt = false } = req.body;
   const project = get('SELECT * FROM projects WHERE id = ?', project_id);
   if (!project) throw new Error('invalid project_id');
   if (!VALID_CURRENCY.has(currency)) throw new Error('currency must be RSD, EUR or BOTH');
@@ -297,6 +297,12 @@ app.post('/api/invoices', h((req, res) => {
   // A racun requires a registered issuer (PIB); until then it is a predracun.
   const kind = seller.pib && seller.pib.trim() ? 'racun' : 'predracun';
 
+  // PDV applies only when in the PDV system AND the invoice isn't exempt
+  // (foreign client / izvoz usluga). Rate + totals are snapshotted onto the row.
+  const exempt = !!pdv_exempt;
+  const pdvRate = s.pdv_obveznik && !exempt ? (Number(s.pdv_rate) || 0) : 0;
+  const { subtotal, pdv, total } = invoiceTotals(cleanItems, pdvRate);
+
   const issued = today();
   const existing = all('SELECT number FROM invoices').map((r) => r.number);
   const number = nextInvoiceNumber(existing, issued.slice(0, 4));
@@ -304,11 +310,12 @@ app.post('/api/invoices', h((req, res) => {
   const info = run(
     `INSERT INTO invoices
        (number, kind, project_id, issued_on, supply_date, place, currency, eur_to_rsd,
-        seller_json, buyer_json, items_json, subtotal_eur, note, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        seller_json, buyer_json, items_json, subtotal_eur, pdv_rate, pdv_eur, total_eur,
+        pdv_exempt, note, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     number, kind, project.id, issued, supply_date || issued, place, currency, Number(s.eur_to_rsd) || 0,
     JSON.stringify(seller), JSON.stringify(buyer), JSON.stringify(cleanItems),
-    invoiceSubtotal(cleanItems), note, issued
+    subtotal, pdvRate, pdv, total, exempt ? 1 : 0, note, issued
   );
   res.status(201).json(get('SELECT * FROM invoices WHERE id = ?', info.lastInsertRowid));
 }));
@@ -323,12 +330,15 @@ app.put('/api/settings', h((req, res) => {
   const cur = readSettings();
   const m = { ...cur, ...req.body };
   if (Number(m.eur_to_rsd) <= 0) throw new Error('eur_to_rsd must be positive');
+  if (Number(m.pdv_rate) < 0) throw new Error('pdv_rate cannot be negative');
   run(
     `UPDATE settings SET base_currency=?, eur_to_rsd=?, display_currency=?,
-       seller_name=?, seller_address=?, seller_pib=?, seller_mb=?, seller_bank=?, seller_note=?
+       seller_name=?, seller_address=?, seller_pib=?, seller_mb=?, seller_bank=?, seller_note=?,
+       pdv_obveznik=?, pdv_rate=?
      WHERE id=1`,
     m.base_currency, Number(m.eur_to_rsd), m.display_currency,
-    m.seller_name, m.seller_address, m.seller_pib, m.seller_mb, m.seller_bank, m.seller_note
+    m.seller_name, m.seller_address, m.seller_pib, m.seller_mb, m.seller_bank, m.seller_note,
+    m.pdv_obveznik ? 1 : 0, Number(m.pdv_rate) || 0
   );
   res.json(readSettings());
 }));

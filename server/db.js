@@ -121,4 +121,18 @@ ensureColumn('projects', 'client_address', "TEXT DEFAULT ''");
 ensureColumn('projects', 'client_pib', "TEXT DEFAULT ''");
 ensureColumn('projects', 'client_mb', "TEXT DEFAULT ''");
 
+// PDV (VAT) readiness. Off by default — flip pdv_obveznik only once actually in
+// the PDV system (turnover threshold or voluntary registration). While off,
+// invoices carry rate 0 and print exactly as before.
+ensureColumn('settings', 'pdv_obveznik', 'INTEGER DEFAULT 0'); // 1 = in the PDV system
+ensureColumn('settings', 'pdv_rate', 'REAL DEFAULT 20');       // default general rate (%)
+
+// Tax snapshot per invoice — frozen at issue time like every other invoice
+// field, so past documents never change when your PDV status later does.
+// Non-PDV / exempt invoices store rate 0, pdv 0, total == subtotal.
+ensureColumn('invoices', 'pdv_rate', 'REAL DEFAULT 0');
+ensureColumn('invoices', 'pdv_eur', 'REAL DEFAULT 0');
+ensureColumn('invoices', 'total_eur', 'REAL DEFAULT 0');
+ensureColumn('invoices', 'pdv_exempt', 'INTEGER DEFAULT 0');   // 1 = foreign client / izvoz usluga
+
 export default db;
