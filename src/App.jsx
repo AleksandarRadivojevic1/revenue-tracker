@@ -76,6 +76,9 @@ export default function App() {
   async function payInvoice(id, d) { await api.payInvoice(id, d); await reload(); }
   async function setPaymentLink(id, link) { const inv = await api.setPaymentLink(id, link); await reload(); return inv; }
 
+  async function saveTransfer(id, d) { if (id) await api.updateTransfer(id, d); else await api.createTransfer(d); await reload(); }
+  async function deleteTransfer(id) { await api.deleteTransfer(id); await reload(); }
+
   async function createOverhead(d) { await api.createOverhead(d); await reload(); }
   async function updateOverhead(id, d) { await api.updateOverhead(id, d); await reload(); }
   async function deleteOverhead(id) { await api.deleteOverhead(id); await reload(); }
@@ -118,7 +121,8 @@ export default function App() {
         <Dashboard data={data} onOpenProject={(id) => go('project', id)} onOpenInvoices={() => go('invoices')}
           createProject={createProject} payCharge={payCharge} createInvoice={createInvoice}
           createOverhead={createOverhead} updateOverhead={updateOverhead}
-          deleteOverhead={deleteOverhead} payOverhead={payOverhead} />
+          deleteOverhead={deleteOverhead} payOverhead={payOverhead}
+          saveTransfer={saveTransfer} deleteTransfer={deleteTransfer} />
       )}
       {view.name === 'project' && (
         <ProjectDetail data={data} projectId={view.projectId} onBack={() => go('dashboard')}

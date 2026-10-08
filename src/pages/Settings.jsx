@@ -110,6 +110,7 @@ export default function Settings({ data, saveSettings }) {
       overheads: data.overheads,
       overhead_payments: data.overhead_payments,
       invoices: data.invoices,
+      transfers: data.transfers,
       settings: data.settings,
     };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });

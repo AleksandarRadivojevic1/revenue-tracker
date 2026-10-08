@@ -1,13 +1,14 @@
 import { useMemo, useState } from 'react';
 import {
-  balanceReminders, chargeStatus, chargeMrr, currencyOf, invoiceState, overheadMonthly, paymentsRollup, perCurrency,
-  quarterlyRollup, yearlyRollup,
+  balanceReminders, chargeStatus, chargeMrr, currencyOf, invoiceState, overheadMonthly, paymentsRollup, payoneerBalance,
+  perCurrency, quarterlyRollup, transferCost, transferCostRows, yearlyRollup,
 } from '../../server/money.js';
 import { formatMoney, formatAmounts, formatDate, FREQUENCY_LABEL, INVOICE_STATE_META } from '../format.js';
 import { packageMeta, OVERHEAD_CATEGORIES } from '../catalog.js';
 import StatusBadge from '../components/StatusBadge.jsx';
 import ProjectForm from '../components/ProjectForm.jsx';
 import OverheadForm from '../components/OverheadForm.jsx';
+import TransferForm from '../components/TransferForm.jsx';
 import { InvoiceForm, invoicedPeriods } from './Invoices.jsx';
 import useMediaQuery from '../hooks/useMediaQuery.js';
 
@@ -15,28 +16,31 @@ const OVERHEAD_LABEL = Object.fromEntries(OVERHEAD_CATEGORIES.map((c) => [c.key,
 
 export default function Dashboard({
   data, onOpenProject, onOpenInvoices, createProject, payCharge, createInvoice,
-  createOverhead, updateOverhead, deleteOverhead, payOverhead,
+  createOverhead, updateOverhead, deleteOverhead, payOverhead, saveTransfer, deleteTransfer,
 }) {
-  const { projects, charges, payments, overheads, overhead_payments, invoices = [], settings, today } = data;
+  const { projects, charges, payments, overheads, overhead_payments, invoices = [], transfers = [], settings, today } = data;
+  // Overhead spend plus Payoneer conversion costs — both realized expenses.
+  const costRows = useMemo(() => [...overhead_payments, ...transferCostRows(transfers)], [overhead_payments, transfers]);
   const [showNew, setShowNew] = useState(false);
   const [overheadModal, setOverheadModal] = useState(null); // { initial? } | null
   const [payingKey, setPayingKey] = useState(null);
   const [invoicing, setInvoicing] = useState(null); // charge row to invoice
+  const [transferModal, setTransferModal] = useState(null); // { initial? } | null
   const compact = useMediaQuery('(max-width: 560px)');
 
   // KPIs per currency — EUR and USD are never added together. Each currency
   // shows in its own unit; the EUR ⇄ RSD toggle only converts EUR.
   const totals = useMemo(() => {
     const only = (rows, c) => rows.filter((r) => currencyOf(r) === c);
-    return perCurrency([charges, payments, overheads, overhead_payments], (c) => {
+    return perCurrency([charges, payments, overheads, costRows], (c) => {
       const { revenue, expenses: projectExpenses } = paymentsRollup(payments, c);
-      const overheadSpend = only(overhead_payments, c).reduce((s, p) => s + p.amount, 0);
+      const overheadSpend = only(costRows, c).reduce((s, p) => s + p.amount, 0);
       const expenses = projectExpenses + overheadSpend;
       const mrr = only(charges, c).reduce((s, x) => s + chargeMrr(x), 0);
       const recurringCosts = only(overheads, c).reduce((s, o) => s + overheadMonthly(o), 0);
       return { revenue, expenses, profit: revenue - expenses, mrr, recurringCosts };
     });
-  }, [charges, payments, overheads, overhead_payments]);
+  }, [charges, payments, overheads, costRows]);
   const fmtTotal = (k) => formatAmounts(totals, settings, (t) => t[k]);
   const profitPositive = Object.values(totals).every((t) => t.profit >= 0);
 
@@ -81,11 +85,11 @@ export default function Dashboard({
   }
 
   const yearly = useMemo(() => {
-    const byCur = perCurrency([payments, overhead_payments], (c) => yearlyRollup(payments, overhead_payments, c));
+    const byCur = perCurrency([payments, costRows], (c) => yearlyRollup(payments, costRows, c));
     return Object.entries(byCur)
       .flatMap(([currency, rows]) => rows.map((r) => ({ ...r, currency })))
       .sort((a, b) => b.year.localeCompare(a.year));
-  }, [payments, overhead_payments]);
+  }, [payments, costRows]);
   const multiCurrency = new Set(yearly.map((y) => y.currency)).size > 1;
 
   // Invoices still owed (oldest due first) and paid deposits awaiting a balance invoice.
@@ -97,6 +101,9 @@ export default function Dashboard({
   const awaitingBalance = useMemo(() => balanceReminders(invoices, payments, today), [invoices, payments, today]);
   const buyerName = (inv) => { try { return JSON.parse(inv.buyer_json).name; } catch { return '—'; } };
   const docFmt = (n, inv) => formatMoney(n, inv.doc_currency || 'EUR', (inv.doc_currency || 'EUR') === 'EUR' ? settings : undefined);
+
+  const heldInPayoneer = useMemo(() => payoneerBalance(payments, transfers), [payments, transfers]);
+  const showPayoneer = transfers.length > 0 || Object.keys(heldInPayoneer).length > 0;
 
   const taxBasis = settings.tax_date_basis || 'paid_on';
   const quarters = useMemo(() => quarterlyRollup(payments, taxBasis), [payments, taxBasis]);
@@ -287,6 +294,49 @@ export default function Dashboard({
         )}
       </div>
 
+      {showPayoneer && (
+        <>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '32px 0 12px' }}>
+            <h2 className="section-title" style={{ margin: 0 }}>Payoneer → bank</h2>
+            <button className="btn btn-sm" onClick={() => setTransferModal({})}>+ Log transfer</button>
+          </div>
+          <div className="card" style={{ padding: 0 }}>
+            <div className="kv" style={{ padding: '12px 16px', margin: 0 }}>
+              <span className="k">Held in Payoneer (received − fees − transferred)</span>
+              <span className="v blue">{formatAmounts(heldInPayoneer, settings)}</span>
+            </div>
+            {transfers.length > 0 && (
+              <div className="overhead-list">
+                {transfers.map((t) => {
+                  const cost = transferCost(t);
+                  return (
+                    <div className="overhead-row" key={t.id}>
+                      <div className="oh-main">
+                        <div className="oh-label">
+                          {formatMoney(t.out_amount, t.out_currency)} → {formatMoney(t.in_amount, t.in_currency)}
+                        </div>
+                        <div className="oh-sub">
+                          {formatDate(t.transferred_on)} · 1 {t.out_currency} = {(t.in_amount / t.out_amount).toFixed(4)} {t.in_currency}
+                          {t.note ? <> · {t.note}</> : null}
+                        </div>
+                      </div>
+                      <div className="oh-amount num" title="Fees + FX spread vs NBS middle rates">
+                        {cost == null ? <span className="muted">cost pending</span> : <>−{formatMoney(cost, t.out_currency)}</>}
+                      </div>
+                      <div className="oh-actions">
+                        <button className="btn btn-sm btn-ghost" onClick={() => setTransferModal({ initial: t })}>Edit</button>
+                        <button className="btn btn-sm btn-ghost btn-danger" onClick={() => { if (confirm('Delete this transfer?')) deleteTransfer(t.id); }}>✕</button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+          <p className="inline-note">Cost = what left Payoneer minus what arrived, both valued at the NBS middle rates of the day. Counted as an expense.</p>
+        </>
+      )}
+
       <h2 className="section-title">By year</h2>
       <div className="card" style={{ padding: 0 }}>
         {yearly.length === 0 ? (
@@ -388,6 +438,10 @@ export default function Dashboard({
 
       {showNew && (
         <ProjectForm settings={settings} onSubmit={createProject} onClose={() => setShowNew(false)} />
+      )}
+      {transferModal && (
+        <TransferForm initial={transferModal.initial}
+          onSubmit={(d) => saveTransfer(transferModal.initial?.id, d)} onClose={() => setTransferModal(null)} />
       )}
       {invoicing && (
         <InvoiceForm projects={projects} charges={charges} invoices={invoices} settings={settings}

@@ -108,6 +108,7 @@ app.get('/api/bootstrap', h((_req, res) => {
     overheads: all('SELECT * FROM overheads ORDER BY id DESC'),
     overhead_payments: all('SELECT * FROM overhead_payments ORDER BY paid_on DESC, id DESC'),
     invoices: all('SELECT * FROM invoices ORDER BY created_at DESC, id DESC'),
+    transfers: all('SELECT * FROM transfers ORDER BY transferred_on DESC, id DESC'),
     settings: readSettings(),
     today: today(),
   });
@@ -558,6 +559,56 @@ app.post('/api/invoices/:id/void', h((req, res) => {
   if (!inv) throw new Error('invoice not found');
   run("UPDATE invoices SET status = 'void' WHERE id = ?", inv.id);
   res.json(get('SELECT * FROM invoices WHERE id = ?', inv.id));
+}));
+
+// --- transfers (Payoneer → bank) ---------------------------------------------
+// Rates are looked up best effort; if NBS is unreachable they stay blank and
+// the cost shows as pending (re-saving the transfer retries).
+async function transferRates(date, outCur, inCur) {
+  const rate = async (c) => { try { return await nbsRate(c, date); } catch { return null; } };
+  return { nbs_out_rsd: await rate(outCur), nbs_in_rsd: await rate(inCur) };
+}
+
+function cleanTransfer(b) {
+  const t = {
+    transferred_on: b.transferred_on || today(),
+    out_amount: Number(b.out_amount), out_currency: checkCurrency(b.out_currency || 'USD'),
+    in_amount: Number(b.in_amount), in_currency: checkCurrency(b.in_currency || 'EUR'),
+    note: String(b.note || ''),
+  };
+  if (!(t.out_amount > 0) || !(t.in_amount > 0)) throw new Error('both amounts must be positive');
+  if (t.out_currency === t.in_currency) throw new Error('a transfer converts between two different currencies');
+  return t;
+}
+
+app.post('/api/transfers', h(async (req, res) => {
+  const t = cleanTransfer(req.body);
+  const r = await transferRates(t.transferred_on, t.out_currency, t.in_currency);
+  const info = run(
+    `INSERT INTO transfers (transferred_on, out_amount, out_currency, in_amount, in_currency, nbs_out_rsd, nbs_in_rsd, note, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    t.transferred_on, t.out_amount, t.out_currency, t.in_amount, t.in_currency, r.nbs_out_rsd, r.nbs_in_rsd, t.note, today()
+  );
+  res.status(201).json(get('SELECT * FROM transfers WHERE id = ?', info.lastInsertRowid));
+}));
+
+app.put('/api/transfers/:id', h(async (req, res) => {
+  const existing = get('SELECT * FROM transfers WHERE id = ?', Number(req.params.id));
+  if (!existing) throw new Error('transfer not found');
+  const t = cleanTransfer({ ...existing, ...req.body });
+  const r = await transferRates(t.transferred_on, t.out_currency, t.in_currency);
+  run(
+    `UPDATE transfers SET transferred_on=?, out_amount=?, out_currency=?, in_amount=?, in_currency=?,
+       nbs_out_rsd=?, nbs_in_rsd=?, note=? WHERE id=?`,
+    t.transferred_on, t.out_amount, t.out_currency, t.in_amount, t.in_currency,
+    r.nbs_out_rsd ?? existing.nbs_out_rsd, r.nbs_in_rsd ?? existing.nbs_in_rsd, t.note, existing.id
+  );
+  res.json(get('SELECT * FROM transfers WHERE id = ?', existing.id));
+}));
+
+app.delete('/api/transfers/:id', h((req, res) => {
+  run('DELETE FROM transfers WHERE id = ?', Number(req.params.id));
+  res.json({ ok: true });
 }));
 
 // --- settings --------------------------------------------------------------

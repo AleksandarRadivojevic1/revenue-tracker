@@ -220,6 +220,50 @@ export function invoiceTotals(items, pdvRate = 0) {
   return { subtotal, pdv, total: subtotal + pdv };
 }
 
+// --- Payoneer → bank transfers ----------------------------------------------
+// A transfer moves money you already earned (e.g. USD in Payoneer → EUR at
+// the bank). It is not revenue; only what the conversion cost is an expense.
+
+/**
+ * Conversion cost in the outgoing currency: what you sent minus what you got,
+ * valued at the NBS middle rates of the transfer date (fees + FX spread).
+ * null until both rates are known.
+ */
+export function transferCost(t) {
+  const out = Number(t.nbs_out_rsd) || 0;
+  const inn = Number(t.nbs_in_rsd) || 0;
+  if (!(out > 0 && inn > 0)) return null;
+  const receivedInOut = (Number(t.in_amount) || 0) * inn / out;
+  return Math.round(((Number(t.out_amount) || 0) - receivedInOut) * 100) / 100;
+}
+
+/** Transfer costs shaped like overhead payments, so rollups count them as expenses. */
+export function transferCostRows(transfers) {
+  return transfers
+    .map((t) => ({ amount: transferCost(t), currency: t.out_currency, paid_on: t.transferred_on }))
+    .filter((r) => r.amount != null);
+}
+
+export const isPayoneerChannel = (channel) => String(channel || '').startsWith('payoneer_');
+
+/**
+ * Money still held in Payoneer, per currency: income received through a
+ * Payoneer channel (net of its fee) minus what has been transferred out.
+ */
+export function payoneerBalance(payments, transfers) {
+  const bal = {};
+  for (const p of payments) {
+    if (p.direction !== 'income' || !isPayoneerChannel(p.channel)) continue;
+    const c = currencyOf(p);
+    bal[c] = (bal[c] || 0) + (Number(p.amount) || 0) - (Number(p.fee) || 0);
+  }
+  for (const t of transfers) {
+    bal[t.out_currency] = (bal[t.out_currency] || 0) - (Number(t.out_amount) || 0);
+  }
+  for (const c of Object.keys(bal)) bal[c] = Math.round(bal[c] * 100) / 100;
+  return bal;
+}
+
 /** An invoice's total in its own currency (old rows only have *_eur). */
 export const invoiceTotal = (inv) => Number(inv.total ?? (inv.total_eur || inv.subtotal_eur)) || 0;
 

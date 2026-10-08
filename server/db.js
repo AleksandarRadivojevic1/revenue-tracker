@@ -194,6 +194,23 @@ ensureColumn('invoices', 'tracked', 'INTEGER DEFAULT 0');
 // so it's the one invoice field that may be set after issue.
 ensureColumn('invoices', 'payment_link', "TEXT DEFAULT ''");
 
+// Payoneer → bank transfers (e.g. USD out, EUR in). Not revenue; the
+// conversion cost (vs NBS middle rates of the day) counts as an expense.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS transfers (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    transferred_on TEXT NOT NULL,
+    out_amount REAL NOT NULL,
+    out_currency TEXT NOT NULL DEFAULT 'USD',
+    in_amount REAL NOT NULL,
+    in_currency TEXT NOT NULL DEFAULT 'EUR',
+    nbs_out_rsd REAL,
+    nbs_in_rsd REAL,
+    note TEXT DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT (date('now'))
+  );
+`);
+
 // Cache of NBS middle rates (currency → RSD) by date, filled on demand.
 db.exec(`
   CREATE TABLE IF NOT EXISTS nbs_rates (

@@ -43,6 +43,10 @@ export const api = {
   deleteOverhead: (id) => req('DELETE', `/api/overheads/${id}`),
   payOverhead: (id, data) => req('POST', `/api/overheads/${id}/pay`, data || {}),
 
+  createTransfer: (data) => req('POST', '/api/transfers', data),
+  updateTransfer: (id, data) => req('PUT', `/api/transfers/${id}`, data),
+  deleteTransfer: (id) => req('DELETE', `/api/transfers/${id}`),
+
   updateSettings: (data) => req('PUT', '/api/settings', data),
 
   nbsRate: (currency, date) => req('GET', `/api/nbs-rate?currency=${currency}&date=${date}`),

@@ -22,6 +22,9 @@ import {
   quarterlyRollup,
   invoiceState,
   balanceReminders,
+  transferCost,
+  transferCostRows,
+  payoneerBalance,
 } from './money.js';
 
 describe('addMonths', () => {
@@ -380,5 +383,30 @@ describe('balanceReminders', () => {
   });
   it('waits until the deposit is actually paid', () => {
     expect(balanceReminders([dep], [], '2026-09-10')).toEqual([]);
+  });
+});
+
+describe('transfers', () => {
+  // $1,000 out, €850 in; NBS: 1 USD = 104 RSD, 1 EUR = 117 RSD.
+  // €850 is worth 850 × 117 / 104 = $956.25 → conversion cost $43.75.
+  const t = { transferred_on: '2026-10-05', out_amount: 1000, out_currency: 'USD', in_amount: 850, in_currency: 'EUR', nbs_out_rsd: 104, nbs_in_rsd: 117 };
+
+  it('costs the conversion at NBS middle rates, in the outgoing currency', () => {
+    expect(transferCost(t)).toBe(43.75);
+  });
+  it('is unknown until both rates are in', () => {
+    expect(transferCost({ ...t, nbs_in_rsd: null })).toBeNull();
+  });
+  it('feeds rollups as an expense in the outgoing currency, not revenue', () => {
+    expect(transferCostRows([t, { ...t, nbs_out_rsd: null }])).toEqual([{ amount: 43.75, currency: 'USD', paid_on: '2026-10-05' }]);
+    expect(yearlyRollup([], transferCostRows([t]), 'USD')).toEqual([{ year: '2026', revenue: 0, expenses: 43.75, profit: -43.75 }]);
+  });
+  it('tracks what is still held in Payoneer', () => {
+    const payments = [
+      { direction: 'income', currency: 'USD', amount: 1200, fee: 12, channel: 'payoneer_receiving_ach' },
+      { direction: 'income', currency: 'USD', amount: 300, channel: 'payoneer_request_card' },
+      { direction: 'income', currency: 'EUR', amount: 800, channel: 'domestic' },
+    ];
+    expect(payoneerBalance(payments, [t])).toEqual({ USD: 488 });
   });
 });
