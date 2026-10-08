@@ -48,7 +48,7 @@ export default function App() {
       if (maintenance) {
         await api.createCharge({
           project_id: project.id, direction: 'income', category: 'maintenance',
-          label: `Maintenance (${maintenance.tierLabel})`, amount: maintenance.amount,
+          label: maintenance.label || `Maintenance (${maintenance.tierLabel})`, amount: maintenance.amount,
           frequency: maintenance.freq, next_due: addMonthsIso(startDate, 1), active: 1,
         });
       }

@@ -42,7 +42,35 @@ export const PACKAGES = [
   },
 ];
 
-export const PACKAGE_BY_KEY = Object.fromEntries(PACKAGES.map((p) => [p.key, p]));
+// US offer (USD), sold as Deimos Agency. `build` is the one-time price,
+// `care` a monthly retainer. null = price not set yet: picking the package
+// leaves the amount blank to fill in. Set the final prices here.
+export const US_PACKAGES = [
+  {
+    key: 'us_mobile_fix',
+    name: 'Mobile fix',
+    tagline: 'Site fixed and fast on phones',
+    build: null,
+    accent: 'green',
+  },
+  {
+    key: 'us_conversion_sprint',
+    name: 'Conversion sprint',
+    tagline: 'More calls and quote requests',
+    build: null,
+    accent: 'blue',
+    popular: true,
+  },
+  {
+    key: 'us_care',
+    name: 'Care retainer',
+    tagline: 'Monthly upkeep and small changes',
+    care: null,
+    accent: 'violet',
+  },
+].map((p) => ({ ...p, currency: 'USD' }));
+
+export const PACKAGE_BY_KEY = Object.fromEntries([...PACKAGES, ...US_PACKAGES].map((p) => [p.key, p]));
 
 // A struck-at-custom-price deal — no fixed catalog price.
 export const CUSTOM_PACKAGE = { key: 'custom', name: 'Custom', tagline: 'Custom deal', accent: 'orange' };

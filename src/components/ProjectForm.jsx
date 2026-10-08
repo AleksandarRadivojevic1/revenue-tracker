@@ -1,8 +1,14 @@
 import { useState } from 'react';
 import Modal from './Modal.jsx';
-import { PACKAGES, PACKAGE_BY_KEY, CUSTOM_PACKAGE, MAINTENANCE_TIERS } from '../catalog.js';
+import { PACKAGES, US_PACKAGES, PACKAGE_BY_KEY, CUSTOM_PACKAGE, MAINTENANCE_TIERS } from '../catalog.js';
 import { formatMoney, CURRENCY_LABEL } from '../format.js';
 import { CURRENCIES, businessToday as today } from '../../server/money.js';
+
+function packagePrice(p, settings) {
+  const cur = p.currency || 'EUR';
+  if ('care' in p) return p.care == null ? 'price not set' : `${formatMoney(p.care, cur, settings)} / mo`;
+  return p.build == null ? 'price not set' : `from ${formatMoney(p.build, cur, settings)}`;
+}
 
 const COUNTRIES = ['RS', 'US', 'CA', 'GB', 'AU', 'DE', 'NL', 'SI', 'HR', 'BA', 'ME', 'MK'];
 
@@ -60,10 +66,19 @@ export default function ProjectForm({ initial, settings, onSubmit, onClose }) {
       setMaintAmount('');
     } else {
       const p = PACKAGE_BY_KEY[key];
-      setBuildAmount(String(p.build));
-      setMaintTier(p.tier);
+      const amount = (n) => (n == null ? '' : String(n)); // null = price not set yet
+      setBuildAmount(amount(p.build));
       setMaintFreq('monthly');
-      setMaintAmount(String(MAINTENANCE_TIERS[p.tier].monthly));
+      if (p.tier) {
+        setMaintTier(p.tier);
+        setMaintAmount(String(MAINTENANCE_TIERS[p.tier].monthly));
+      } else if ('care' in p) {
+        setMaintTier('custom');
+        setMaintAmount(amount(p.care));
+      } else {
+        setMaintTier('none');
+        setMaintAmount('');
+      }
     }
   }
 
@@ -93,7 +108,11 @@ export default function ProjectForm({ initial, settings, onSubmit, onClose }) {
       autoCharges = {
         buildAmount: buildAmount !== '' && build > 0 ? build : null,
         maintenance: maintTier !== 'none' && maintAmount !== '' && maint > 0
-          ? { amount: maint, freq: maintFreq, tierLabel: MAINTENANCE_TIERS[maintTier]?.label || 'Custom' }
+          ? {
+              amount: maint, freq: maintFreq, tierLabel: MAINTENANCE_TIERS[maintTier]?.label || 'Custom',
+              // A retainer package names its own charge ("Care retainer").
+              label: 'care' in (PACKAGE_BY_KEY[form.package] || {}) ? PACKAGE_BY_KEY[form.package].name : undefined,
+            }
           : null,
         startDate,
       };
@@ -167,14 +186,14 @@ export default function ProjectForm({ initial, settings, onSubmit, onClose }) {
       <div className="field">
         <label>Package used</label>
         <div className="pkg-grid">
-          {PACKAGES.map((p) => (
+          {(cur === 'USD' ? US_PACKAGES : PACKAGES).map((p) => (
             <button type="button" key={p.key}
               className={`pkg-opt ${form.package === p.key ? 'selected' : ''}`}
               onClick={() => selectPackage(p.key)}>
               {p.popular && <span className="pill accent-blue best"><span className="dot" />Top</span>}
               <div className="pkg-name">{p.name}</div>
               <div className="pkg-tag">{p.tagline}</div>
-              <div className="pkg-price">from {formatMoney(p.build, 'EUR', settings)}</div>
+              <div className="pkg-price">{packagePrice(p, settings)}</div>
             </button>
           ))}
           <button type="button"
@@ -213,8 +232,8 @@ export default function ProjectForm({ initial, settings, onSubmit, onClose }) {
                   <label>Maintenance</label>
                   <select className="select" value={maintTier} onChange={(e) => changeMaintTier(e.target.value)}>
                     <option value="none">None</option>
-                    <option value="website">Website tier</option>
-                    <option value="webapp">Web app tier</option>
+                    {cur === 'EUR' && <option value="website">Website tier</option>}
+                    {cur === 'EUR' && <option value="webapp">Web app tier</option>}
                     <option value="custom">Custom amount</option>
                   </select>
                 </div>
