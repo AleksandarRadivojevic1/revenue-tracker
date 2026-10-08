@@ -42,4 +42,6 @@ export const api = {
   payOverhead: (id, data) => req('POST', `/api/overheads/${id}/pay`, data || {}),
 
   updateSettings: (data) => req('PUT', '/api/settings', data),
+
+  nbsRate: (currency, date) => req('GET', `/api/nbs-rate?currency=${currency}&date=${date}`),
 };

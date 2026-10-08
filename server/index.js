@@ -8,6 +8,7 @@ import {
   invoiceTotals, isValidAba, nextInvoiceNumber,
 } from './money.js';
 import { basicAuth } from './auth.js';
+import { createNbsClient } from './nbs.js';
 import { scheduleBackups } from './backup.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -55,15 +56,48 @@ function paymentTax(amount, currency, rate) {
     : { nbs_rate_rsd: null, amount_rsd: null };
 }
 
-// wrap handlers so thrown errors become 400s instead of crashing the process
-const h = (fn) => (req, res) => {
+// wrap handlers (sync or async) so thrown errors become 400s instead of
+// crashing the process
+const h = (fn) => async (req, res) => {
   try {
-    fn(req, res);
+    await fn(req, res);
   } catch (err) {
     console.error(err);
     res.status(400).json({ error: err.message });
   }
 };
+
+const nbsRate = createNbsClient({
+  today,
+  cache: {
+    get: (c, d) => get('SELECT rate FROM nbs_rates WHERE currency = ? AND date = ?', c, d)?.rate,
+    set: (c, d, r) => run('INSERT OR REPLACE INTO nbs_rates (currency, date, rate) VALUES (?, ?, ?)', c, d, r),
+  },
+});
+
+// Best effort: give a foreign income payment its NBS rate for the tax-basis
+// date, if it has none yet. A failed lookup (offline, API down) just leaves
+// the rate blank for manual entry — it never blocks logging the payment.
+async function fillNbsRate(paymentId) {
+  const p = get('SELECT * FROM payments WHERE id = ?', paymentId);
+  if (!p || p.direction !== 'income' || p.nbs_rate_rsd || !p.channel || p.channel === 'domestic') return;
+  const basis = readSettings().tax_date_basis;
+  const date = (basis === 'received_on' && p.received_on) || p.paid_on;
+  try {
+    const tax = paymentTax(p.amount, p.currency || 'EUR', await nbsRate(p.currency || 'EUR', date));
+    run('UPDATE payments SET nbs_rate_rsd = ?, amount_rsd = ? WHERE id = ? AND nbs_rate_rsd IS NULL',
+      tax.nbs_rate_rsd, tax.amount_rsd, p.id);
+  } catch (err) {
+    console.warn(`[nbs] no rate for payment ${p.id}: ${err.message}`);
+  }
+}
+
+// --- NBS rates ---------------------------------------------------------------
+app.get('/api/nbs-rate', h(async (req, res) => {
+  const currency = checkCurrency(String(req.query.currency || '').toUpperCase());
+  const date = String(req.query.date || today());
+  res.json({ currency, date, rate: await nbsRate(currency, date) });
+}));
 
 // --- bootstrap (single load) ----------------------------------------------
 app.get('/api/bootstrap', h((_req, res) => {
@@ -179,8 +213,18 @@ app.delete('/api/charges/:id', h((req, res) => {
   res.json({ ok: true });
 }));
 
+// Advance a paid charge's schedule: one_time closes, recurring rolls forward.
+function settleCharge(charge, paidOn) {
+  if (charge.frequency === 'one_time') {
+    run('UPDATE charges SET active = 0, next_due = NULL WHERE id = ?', charge.id);
+  } else {
+    const base = charge.next_due || paidOn;
+    run('UPDATE charges SET next_due = ? WHERE id = ?', advanceDueDate(base, charge.frequency), charge.id);
+  }
+}
+
 // Mark a charge paid: log a payment, then advance/close the schedule.
-app.post('/api/charges/:id/pay', h((req, res) => {
+app.post('/api/charges/:id/pay', h(async (req, res) => {
   const charge = get('SELECT * FROM charges WHERE id = ?', Number(req.params.id));
   if (!charge) throw new Error('charge not found');
   const paidOn = req.body?.paid_on || today();
@@ -188,32 +232,27 @@ app.post('/api/charges/:id/pay', h((req, res) => {
   const currency = charge.currency || 'EUR';
   const tax = paymentTax(charge.amount, currency, null);
 
+  let paymentId;
   db.exec('BEGIN');
   try {
-    run(
+    paymentId = run(
       `INSERT INTO payments (charge_id, project_id, direction, amount, currency, paid_on, note, channel, nbs_rate_rsd, amount_rsd)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       charge.id, charge.project_id, charge.direction, charge.amount, currency, paidOn,
       req.body?.note || `Paid: ${charge.label || charge.category}`,
       charge.direction === 'income' ? defaultChannel(project) : null, tax.nbs_rate_rsd, tax.amount_rsd
-    );
-
-    if (charge.frequency === 'one_time') {
-      run('UPDATE charges SET active = 0, next_due = NULL WHERE id = ?', charge.id);
-    } else {
-      const base = charge.next_due || paidOn;
-      const next = advanceDueDate(base, charge.frequency);
-      run('UPDATE charges SET next_due = ? WHERE id = ?', next, charge.id);
-    }
+    ).lastInsertRowid;
+    settleCharge(charge, paidOn);
     db.exec('COMMIT');
   } catch (e) {
     db.exec('ROLLBACK');
     throw e;
   }
+  await fillNbsRate(paymentId);
 
   res.json({
     charge: get('SELECT * FROM charges WHERE id = ?', charge.id),
-    payment: get('SELECT * FROM payments WHERE project_id = ? ORDER BY id DESC LIMIT 1', charge.project_id),
+    payment: get('SELECT * FROM payments WHERE id = ?', paymentId),
   });
 }));
 
@@ -223,7 +262,7 @@ function checkChannel(c) {
   return c || null;
 }
 
-app.post('/api/payments', h((req, res) => {
+app.post('/api/payments', h(async (req, res) => {
   const { project_id, direction, amount, paid_on = today(), note = '', charge_id = null } = req.body;
   const project = get('SELECT * FROM projects WHERE id = ?', project_id);
   if (!project) throw new Error('invalid project_id');
@@ -238,6 +277,7 @@ app.post('/api/payments', h((req, res) => {
     charge_id, project_id, direction, Number(amount), currency, paid_on, note,
     req.body.received_on || null, channel, Number(req.body.fee) || 0, tax.nbs_rate_rsd, tax.amount_rsd
   );
+  await fillNbsRate(info.lastInsertRowid);
   res.status(201).json(get('SELECT * FROM payments WHERE id = ?', info.lastInsertRowid));
 }));
 

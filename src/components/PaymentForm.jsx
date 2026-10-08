@@ -2,6 +2,7 @@ import { useState } from 'react';
 import Modal from './Modal.jsx';
 import { CURRENCIES, paymentRsd } from '../../server/money.js';
 import { formatMoney } from '../format.js';
+import { api } from '../api.js';
 
 export const CHANNELS = [
   ['payoneer_receiving_ach', 'Payoneer receiving account (ACH / wire)'],
@@ -13,7 +14,7 @@ export const CHANNELS = [
 // Edit an existing ledger payment. The project, direction and originating
 // charge are fixed — those aren't things you "fix" on a payment. Amount,
 // currency, dates and the tax fields are, since they feed the tax base.
-export default function PaymentForm({ initial, onSubmit, onClose }) {
+export default function PaymentForm({ initial, taxBasis = 'paid_on', onSubmit, onClose }) {
   const [form, setForm] = useState({
     amount: initial?.amount ?? '',
     currency: initial?.currency || 'EUR',
@@ -26,11 +27,23 @@ export default function PaymentForm({ initial, onSubmit, onClose }) {
   });
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [fetching, setFetching] = useState(false);
 
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
   const isIncome = initial?.direction !== 'expense';
   const needsRate = form.currency !== 'RSD';
   const rsd = paymentRsd({ amount: Number(form.amount), currency: form.currency, nbs_rate_rsd: Number(form.nbs_rate_rsd) });
+
+  // The rate for whichever date decides the tax quarter (a Settings choice).
+  const rateDate = (taxBasis === 'received_on' && form.received_on) || form.paid_on;
+  async function fetchRate() {
+    setFetching(true); setError('');
+    try {
+      const { rate } = await api.nbsRate(form.currency, rateDate);
+      setForm((f) => ({ ...f, nbs_rate_rsd: rate }));
+    } catch (e) { setError(`NBS rate: ${e.message}`); }
+    setFetching(false);
+  }
 
   async function submit() {
     if (form.amount === '' || Number.isNaN(Number(form.amount))) {
@@ -100,8 +113,16 @@ export default function PaymentForm({ initial, onSubmit, onClose }) {
             </div>
             <div className="field">
               <label>NBS middle rate (1 {form.currency} = ? RSD)</label>
-              <input className="input" type="number" step="0.0001" min="0" value={needsRate ? form.nbs_rate_rsd : 1}
-                disabled={!needsRate} onChange={set('nbs_rate_rsd')} placeholder="from nbs.rs for the payment date" />
+              <div style={{ display: 'flex', gap: 6 }}>
+                <input className="input" type="number" step="0.0001" min="0" value={needsRate ? form.nbs_rate_rsd : 1}
+                  disabled={!needsRate} onChange={set('nbs_rate_rsd')} placeholder="NBS middle rate" />
+                {needsRate && (
+                  <button type="button" className="btn btn-sm" onClick={fetchRate} disabled={fetching || !rateDate}
+                    title={`NBS middle rate for ${rateDate}`}>
+                    {fetching ? '…' : 'Fetch'}
+                  </button>
+                )}
+              </div>
             </div>
           </div>
           <p className="inline-note" style={{ marginTop: 0 }}>

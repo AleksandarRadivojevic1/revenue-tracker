@@ -185,4 +185,14 @@ ensureColumn('payments', 'fee', 'REAL DEFAULT 0');      // processor fee, in the
 ensureColumn('payments', 'nbs_rate_rsd', 'REAL');       // NBS middle rate, currency → RSD
 ensureColumn('payments', 'amount_rsd', 'REAL');         // gross × rate, snapshotted
 
+// Cache of NBS middle rates (currency → RSD) by date, filled on demand.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS nbs_rates (
+    currency TEXT NOT NULL,
+    date TEXT NOT NULL,
+    rate REAL NOT NULL,
+    PRIMARY KEY (currency, date)
+  );
+`);
+
 export default db;

@@ -173,6 +173,7 @@ export default function ProjectDetail({
       {editPayment && (
         <PaymentForm
           initial={editPayment}
+          taxBasis={settings.tax_date_basis}
           onSubmit={(d) => updatePayment(editPayment.id, d)}
           onClose={() => setEditPayment(null)}
         />
