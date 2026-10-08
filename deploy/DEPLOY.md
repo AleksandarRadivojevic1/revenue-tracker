@@ -142,6 +142,14 @@ ls -la /media/library/backups/revenue-tracker     # payments-YYYY-MM-DD.db
 `REV_BACKUP_DIR` unset disables backups by design — there is no SD-card
 fallback, because a backup that dies with its original is worse than none.
 
+**Alerts (ntfy).** With `NTFY_URL` / `NTFY_TOPIC` (+ `NTFY_TOKEN`) set — the
+same variables seo-cockpit uses — the app pushes an alert when a nightly
+snapshot **fails**, and at **startup** when the newest snapshot is more than 26 h
+old (the app or the Pi was down, as in the 2026-09-22 → 10-06 power cut); it
+then takes a catch-up snapshot immediately. Nothing is sent when backups are
+healthy. Alerts from the Pi can't report the Pi itself being down — that's the
+laptop watcher's job (below).
+
 **To restore:** stop the service and copy a snapshot over `data/payments.db`
 (remove any `payments.db-wal` / `-shm` sidecars first). The snapshots are plain
 SQLite files — nothing to unpack.
@@ -180,6 +188,13 @@ systemctl --user enable --now revenue-tracker-backup-pull.timer
 systemctl --user list-timers | grep revenue        # next run
 journalctl --user -u revenue-tracker-backup-pull   # results / STALE alarms
 ```
+
+**Alerts:** a stale or corrupt snapshot, or a Pi unreachable for more than 2
+days (one missed day while you're away only logs), raises a desktop
+notification and — if configured — an ntfy push. Put the target in
+`~/.config/revenue-tracker-backup.env` (`NTFY_URL=http://192.168.1.156:8090`,
+`NTFY_TOPIC=…`, `NTFY_TOKEN=…`); note the Pi's ntfy is unreachable when the Pi
+is down, which is when the desktop notification matters.
 
 The timer is `Persistent`, so a day missed while the laptop was off runs at the
 next boot. Override `PI_HOST`, `REMOTE_DIR`, `LOCAL_DIR` or `MAX_AGE_DAYS` with

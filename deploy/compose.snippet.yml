@@ -51,6 +51,12 @@ services:
       # the only default would be the SD card, which is the failure this exists
       # to survive. Must be the container path of the NVMe mount below.
       REV_BACKUP_DIR: /backups
+      # ntfy alerts for a failed or missed backup. Same variables as
+      # seo-cockpit, so alerts reach the same phone; REV_NTFY_TOPIC overrides
+      # the topic if you want revenue-tracker on its own.
+      NTFY_URL: ${NTFY_URL:-}
+      NTFY_TOPIC: ${REV_NTFY_TOPIC:-${NTFY_TOPIC:-}}
+      NTFY_TOKEN: ${NTFY_TOKEN:-}
       TZ: UTC
     volumes:
       # The database. READ-WRITE — this app is the sole writer.

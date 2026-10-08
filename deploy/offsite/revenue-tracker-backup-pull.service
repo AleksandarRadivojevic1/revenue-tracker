@@ -7,5 +7,7 @@ After=network-online.target
 
 [Service]
 Type=oneshot
+# Optional: NTFY_URL / NTFY_TOPIC / NTFY_TOKEN (and PI_HOST etc.) for alerts.
+EnvironmentFile=-%h/.config/revenue-tracker-backup.env
 # Path to your checkout of this repo:
 ExecStart=%h/Documents/GitHub/revenue-tracker/deploy/offsite/pull-backups.sh
