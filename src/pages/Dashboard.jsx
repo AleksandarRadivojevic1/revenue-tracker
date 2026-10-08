@@ -1,8 +1,9 @@
 import { useMemo, useState } from 'react';
 import {
-  chargeStatus, chargeMrr, currencyOf, overheadMonthly, paymentsRollup, perCurrency, quarterlyRollup, yearlyRollup,
+  balanceReminders, chargeStatus, chargeMrr, currencyOf, invoiceState, overheadMonthly, paymentsRollup, perCurrency,
+  quarterlyRollup, yearlyRollup,
 } from '../../server/money.js';
-import { formatMoney, formatAmounts, formatDate, FREQUENCY_LABEL } from '../format.js';
+import { formatMoney, formatAmounts, formatDate, FREQUENCY_LABEL, INVOICE_STATE_META } from '../format.js';
 import { packageMeta, OVERHEAD_CATEGORIES } from '../catalog.js';
 import StatusBadge from '../components/StatusBadge.jsx';
 import ProjectForm from '../components/ProjectForm.jsx';
@@ -12,10 +13,10 @@ import useMediaQuery from '../hooks/useMediaQuery.js';
 const OVERHEAD_LABEL = Object.fromEntries(OVERHEAD_CATEGORIES.map((c) => [c.key, c.label]));
 
 export default function Dashboard({
-  data, onOpenProject, createProject, payCharge,
+  data, onOpenProject, onOpenInvoices, createProject, payCharge,
   createOverhead, updateOverhead, deleteOverhead, payOverhead,
 }) {
-  const { projects, charges, payments, overheads, overhead_payments, settings, today } = data;
+  const { projects, charges, payments, overheads, overhead_payments, invoices = [], settings, today } = data;
   const [showNew, setShowNew] = useState(false);
   const [overheadModal, setOverheadModal] = useState(null); // { initial? } | null
   const [payingKey, setPayingKey] = useState(null);
@@ -76,6 +77,16 @@ export default function Dashboard({
   }, [payments, overhead_payments]);
   const multiCurrency = new Set(yearly.map((y) => y.currency)).size > 1;
 
+  // Invoices still owed (oldest due first) and paid deposits awaiting a balance invoice.
+  const outstanding = useMemo(() => invoices
+    .map((inv) => ({ inv, st: invoiceState(inv, payments, today) }))
+    .filter(({ st }) => ['unpaid', 'partial', 'overdue'].includes(st.state))
+    .sort((a, b) => (a.inv.due_on || '').localeCompare(b.inv.due_on || '')),
+  [invoices, payments, today]);
+  const awaitingBalance = useMemo(() => balanceReminders(invoices, payments, today), [invoices, payments, today]);
+  const buyerName = (inv) => { try { return JSON.parse(inv.buyer_json).name; } catch { return '—'; } };
+  const docFmt = (n, inv) => formatMoney(n, inv.doc_currency || 'EUR', (inv.doc_currency || 'EUR') === 'EUR' ? settings : undefined);
+
   const taxBasis = settings.tax_date_basis || 'paid_on';
   const quarters = useMemo(() => quarterlyRollup(payments, taxBasis), [payments, taxBasis]);
 
@@ -130,6 +141,43 @@ export default function Dashboard({
           <div className="hint">Subscriptions &amp; tools</div>
         </div>
       </div>
+
+      {(outstanding.length > 0 || awaitingBalance.length > 0) && (
+        <>
+          <h2 className="section-title">Outstanding invoices</h2>
+          <div className="card" style={{ padding: 0 }}>
+            <div className="overhead-list">
+              {outstanding.map(({ inv, st }) => (
+                <div className="overhead-row" key={inv.id}>
+                  <div className="oh-main">
+                    <div className="oh-label">{inv.number} · {buyerName(inv)}</div>
+                    <div className="oh-sub">
+                      {inv.due_on ? <>Due {formatDate(inv.due_on)} · </> : null}
+                      <span className={`pill ${INVOICE_STATE_META[st.state].tone}`}><span className="dot" />{INVOICE_STATE_META[st.state].label}</span>
+                    </div>
+                  </div>
+                  <div className="oh-amount num">{docFmt(st.remaining, inv)}</div>
+                  <div className="oh-actions">
+                    <button className="btn btn-sm" onClick={onOpenInvoices}>Open</button>
+                  </div>
+                </div>
+              ))}
+              {awaitingBalance.map((inv) => (
+                <div className="overhead-row" key={`bal:${inv.id}`}>
+                  <div className="oh-main">
+                    <div className="oh-label">Send the balance invoice · {buyerName(inv)}</div>
+                    <div className="oh-sub">Deposit {inv.number} is paid — work can start; bill the balance on delivery.</div>
+                  </div>
+                  <div className="oh-amount num" />
+                  <div className="oh-actions">
+                    <button className="btn btn-sm" onClick={onOpenInvoices}>Invoices</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </>
+      )}
 
       <h2 className="section-title">Scheduled — due soon &amp; overdue</h2>
       <div className="card" style={{ padding: 0 }}>

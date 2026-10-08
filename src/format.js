@@ -53,6 +53,15 @@ export const STATUS_META = {
   overdue: { label: 'Overdue', tone: 'red' },
 };
 
+// Payment state of an invoice (money.js invoiceState).
+export const INVOICE_STATE_META = {
+  paid: { label: 'Paid', tone: 'mint' },
+  partial: { label: 'Part paid', tone: 'amber' },
+  unpaid: { label: 'Unpaid', tone: 'neutral' },
+  overdue: { label: 'Overdue', tone: 'red' },
+  void: { label: 'Void', tone: 'red' },
+};
+
 export const FREQUENCY_LABEL = {
   one_time: 'One-time',
   monthly: '/mo',

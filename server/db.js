@@ -185,6 +185,12 @@ ensureColumn('payments', 'fee', 'REAL DEFAULT 0');      // processor fee, in the
 ensureColumn('payments', 'nbs_rate_rsd', 'REAL');       // NBS middle rate, currency → RSD
 ensureColumn('payments', 'amount_rsd', 'REAL');         // gross × rate, snapshotted
 
+// Invoice payment tracking: a payment can settle (part of) an invoice.
+// Invoices issued before this existed stay tracked = 0 and never show as
+// outstanding — they were settled through their charges.
+ensureColumn('payments', 'invoice_id', 'INTEGER REFERENCES invoices(id) ON DELETE SET NULL');
+ensureColumn('invoices', 'tracked', 'INTEGER DEFAULT 0');
+
 // Cache of NBS middle rates (currency → RSD) by date, filled on demand.
 db.exec(`
   CREATE TABLE IF NOT EXISTS nbs_rates (

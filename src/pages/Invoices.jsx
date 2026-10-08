@@ -1,8 +1,9 @@
 import { useMemo, useState } from 'react';
 import Modal from '../components/Modal.jsx';
-import { formatMoney, formatDate, CURRENCY_LABEL } from '../format.js';
+import { formatMoney, formatDate, CURRENCY_LABEL, INVOICE_STATE_META } from '../format.js';
 import { downloadInvoicePdf } from '../invoicePdf.js';
-import { CURRENCIES, businessToday as today, currencyOf } from '../../server/money.js';
+import { CURRENCIES, businessToday as today, currencyOf, invoiceState } from '../../server/money.js';
+import { CHANNELS } from '../components/PaymentForm.jsx';
 
 // Display modes of a Serbian EUR document (amounts stay EUR; RSD via the rate).
 const DISPLAY_MODES = [['RSD', 'RSD (dinari)'], ['EUR', 'EUR (€)'], ['BOTH', 'Both (RSD + €)']];
@@ -13,10 +14,13 @@ const STAGE_LABEL = { deposit: 'Deposit', balance: 'Balance' };
 const parse = (s) => { try { return JSON.parse(s || '{}'); } catch { return {}; } };
 const docCurrency = (inv) => inv.doc_currency || 'EUR';
 const docTotal = (inv) => inv.total ?? (inv.total_eur || inv.subtotal_eur);
+// EUR documents honor the EUR ⇄ RSD toggle; USD/RSD documents show as-is.
+const fmtDoc = (n, inv, settings) => formatMoney(n, docCurrency(inv), docCurrency(inv) === 'EUR' ? settings : undefined);
 
-export default function Invoices({ data, createInvoice, voidInvoice }) {
-  const { invoices, projects, charges, settings } = data;
+export default function Invoices({ data, createInvoice, voidInvoice, payInvoice }) {
+  const { invoices, projects, charges, payments, settings } = data;
   const [showNew, setShowNew] = useState(false);
+  const [paying, setPaying] = useState(null); // invoice row being paid
   const hasSellerPib = Boolean(settings.seller_pib && settings.seller_pib.trim());
   const issuedCount = invoices.filter((i) => i.status !== 'void').length;
 
@@ -47,7 +51,7 @@ export default function Invoices({ data, createInvoice, voidInvoice }) {
             <table className="table">
               <thead>
                 <tr>
-                  <th>Number</th><th>Kind</th><th>Client</th><th>Issued</th><th>Due</th>
+                  <th>Number</th><th>Kind</th><th>Client</th><th>Issued</th><th>Due</th><th>Status</th>
                   <th className="num">Total</th><th></th>
                 </tr>
               </thead>
@@ -55,22 +59,28 @@ export default function Invoices({ data, createInvoice, voidInvoice }) {
                 {invoices.map((inv) => {
                   const buyer = parse(inv.buyer_json);
                   const isVoid = inv.status === 'void';
+                  const st = invoiceState(inv, payments, data.today);
+                  const meta = INVOICE_STATE_META[st.state];
                   return (
                     <tr key={inv.id} style={isVoid ? { opacity: 0.55 } : undefined}>
                       <td style={{ fontWeight: 500 }}>{inv.number}</td>
-                      <td>
-                        {isVoid
-                          ? <span className="pill red"><span className="dot" />Void</span>
-                          : <span className={`pill ${inv.kind === 'racun' || inv.lang === 'en' ? 'mint' : 'neutral'}`}><span className="dot" />{kindLabel(inv)}</span>}
-                      </td>
+                      <td><span className="pill neutral">{kindLabel(inv)}</span></td>
                       <td>{buyer.name || '—'}</td>
                       <td>{formatDate(inv.issued_on)}</td>
                       <td>{inv.due_on ? formatDate(inv.due_on) : <span className="muted">—</span>}</td>
+                      <td>
+                        {meta ? <span className={`pill ${meta.tone}`}><span className="dot" />{meta.label}</span> : <span className="muted">—</span>}
+                        {st.state === 'partial' || (st.state === 'overdue' && st.paid > 0)
+                          ? <div className="muted" style={{ fontSize: 12 }}>{fmtDoc(st.remaining, inv, settings)} left</div> : null}
+                      </td>
                       <td className="num" style={isVoid ? { textDecoration: 'line-through' } : undefined}>
-                        {formatMoney(docTotal(inv), docCurrency(inv), docCurrency(inv) === 'EUR' ? settings : undefined)}
+                        {fmtDoc(docTotal(inv), inv, settings)}
                       </td>
                       <td className="num">
                         <div className="row-actions">
+                          {['unpaid', 'partial', 'overdue'].includes(st.state) && (
+                            <button className="btn btn-sm" onClick={() => setPaying(inv)}>Record payment</button>
+                          )}
                           <button className="btn btn-sm" onClick={() => downloadInvoicePdf(inv)}>PDF</button>
                           {!isVoid && (
                             <button className="btn btn-sm btn-ghost btn-danger" title="Void — keeps the number, stamps the PDF VOID"
@@ -89,6 +99,10 @@ export default function Invoices({ data, createInvoice, voidInvoice }) {
         )}
       </div>
 
+      {paying && (
+        <InvoicePaymentForm invoice={paying} payments={payments} settings={settings} today={data.today}
+          onSubmit={(d) => payInvoice(paying.id, d)} onClose={() => setPaying(null)} />
+      )}
       {showNew && (
         <InvoiceForm projects={projects} charges={charges} invoices={invoices} settings={settings}
           onSubmit={createInvoice} onClose={() => setShowNew(false)} />
@@ -121,7 +135,7 @@ function InvoiceForm({ projects, charges, invoices, settings, onSubmit, onClose 
   const seededFor = useMemo(() => {
     const rows = charges
       .filter((c) => c.project_id === Number(projectId) && c.direction === 'income' && currencyOf(c) === docCur)
-      .map((c) => ({ description: c.label || c.category, qty: 1, unit: c.amount, include: true }));
+      .map((c) => ({ description: c.label || c.category, qty: 1, unit: c.amount, include: true, charge_id: c.id }));
     return { key: `${projectId}:${docCur}`, rows };
   }, [projectId, docCur, charges]);
 
@@ -166,7 +180,7 @@ function InvoiceForm({ projects, charges, invoices, settings, onSubmit, onClose 
   async function submit() {
     const items = lines
       .filter((l) => l.include && l.description.trim())
-      .map((l) => ({ description: l.description.trim(), qty: Number(l.qty) || 0, unit: Number(l.unit) || 0 }));
+      .map((l) => ({ description: l.description.trim(), qty: Number(l.qty) || 0, unit: Number(l.unit) || 0, charge_id: l.charge_id || null }));
     if (!projectId) { setError('Pick a project.'); return; }
     if (items.length === 0) { setError('Add at least one line item with a description.'); return; }
     setBusy(true); setError('');
@@ -314,6 +328,94 @@ function InvoiceForm({ projects, charges, invoices, settings, onSubmit, onClose 
         <label>{en ? 'Note' : 'Napomena (note)'}</label>
         <input className="input" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Optional" />
       </div>
+    </Modal>
+  );
+}
+
+// Record money received against an invoice: log a new payment, or link one
+// already logged (e.g. via "Mark paid" on a charge) so it isn't counted twice.
+function InvoicePaymentForm({ invoice, payments, settings, today: todayIso, onSubmit, onClose }) {
+  const st = invoiceState(invoice, payments, todayIso);
+  const cur = docCurrency(invoice);
+  const linkable = payments.filter((p) =>
+    p.project_id === invoice.project_id && p.direction === 'income' && !p.invoice_id && currencyOf(p) === cur
+  );
+  const [mode, setMode] = useState('new');
+  const [amount, setAmount] = useState(st.remaining);
+  const [paidOn, setPaidOn] = useState(today());
+  const [channel, setChannel] = useState('');
+  const [paymentId, setPaymentId] = useState(linkable[0]?.id || '');
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  async function submit() {
+    setBusy(true); setError('');
+    try {
+      await onSubmit(mode === 'link'
+        ? { payment_id: Number(paymentId) }
+        : { amount: Number(amount), paid_on: paidOn, channel: channel || undefined });
+      onClose();
+    } catch (e) { setError(e.message); setBusy(false); }
+  }
+
+  return (
+    <Modal
+      title={`Payment for ${invoice.number}`}
+      onClose={onClose}
+      footer={
+        <>
+          <button className="btn" onClick={onClose} disabled={busy}>Cancel</button>
+          <button className="btn btn-primary" onClick={submit} disabled={busy || (mode === 'link' && !paymentId)}>Record</button>
+        </>
+      }
+    >
+      {error && <div className="form-error">{error}</div>}
+      <div className="kv"><span className="k">Total</span><span className="v">{fmtDoc(st.total, invoice, settings)}</span></div>
+      <div className="kv"><span className="k">Already paid</span><span className="v">{fmtDoc(st.paid, invoice, settings)}</span></div>
+      <div className="kv" style={{ marginBottom: 12 }}><span className="k">Remaining</span><span className="v blue">{fmtDoc(st.remaining, invoice, settings)}</span></div>
+
+      <div className="seg" style={{ marginBottom: 12 }}>
+        <button className={mode === 'new' ? 'active' : ''} onClick={() => setMode('new')}>New payment</button>
+        <button className={mode === 'link' ? 'active' : ''} onClick={() => setMode('link')} disabled={linkable.length === 0}>
+          Link logged payment{linkable.length ? ` (${linkable.length})` : ''}
+        </button>
+      </div>
+
+      {mode === 'new' ? (
+        <>
+          <div className="field-row">
+            <div className="field">
+              <label>Amount ({cur}, gross)</label>
+              <input className="input" type="number" step="0.01" min="0" value={amount} onChange={(e) => setAmount(e.target.value)} />
+            </div>
+            <div className="field">
+              <label>Paid on</label>
+              <input className="input" type="date" value={paidOn} onChange={(e) => setPaidOn(e.target.value)} />
+            </div>
+          </div>
+          <div className="field">
+            <label>Channel</label>
+            <select className="select" value={channel} onChange={(e) => setChannel(e.target.value)}>
+              <option value="">Default for this client</option>
+              {CHANNELS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            </select>
+          </div>
+          <p className="inline-note">
+            {invoice.stage === 'deposit'
+              ? 'A deposit never closes the project\'s charges — the balance invoice does.'
+              : 'Once fully paid, the charges this invoice billed are marked paid too.'}
+          </p>
+        </>
+      ) : (
+        <div className="field">
+          <label>Payment already in the ledger</label>
+          <select className="select" value={paymentId} onChange={(e) => setPaymentId(e.target.value)}>
+            {linkable.map((p) => (
+              <option key={p.id} value={p.id}>{formatDate(p.paid_on)} · {formatMoney(p.amount, cur)} · {p.note}</option>
+            ))}
+          </select>
+        </div>
+      )}
     </Modal>
   );
 }

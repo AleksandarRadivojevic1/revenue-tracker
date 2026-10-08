@@ -5,7 +5,7 @@ import { dirname, join } from 'node:path';
 import db from './db.js';
 import {
   CURRENCIES, advanceDueDate, businessToday, dueDateFor, invoiceItemAmount, invoiceItemUnit,
-  invoiceTotals, isValidAba, nextInvoiceNumber,
+  invoiceState, invoiceTotals, isValidAba, nextInvoiceNumber,
 } from './money.js';
 import { basicAuth } from './auth.js';
 import { createNbsClient } from './nbs.js';
@@ -408,12 +408,19 @@ app.post('/api/invoices', h((req, res) => {
   if (!VALID_STAGE.has(stage)) throw new Error('stage must be full, deposit or balance');
   const depositRef = stage === 'balance' ? String(req.body.deposit_ref || '').trim() : '';
 
-  const cleanItems = (Array.isArray(items) ? items : []).map((i) => ({
-    description: String(i.description || '').trim(),
-    qty: Number(i.qty) || 0,
-    unit: invoiceItemUnit(i),
-    amount: invoiceItemAmount(i),
-  }));
+  const cleanItems = (Array.isArray(items) ? items : []).map((i) => {
+    const item = {
+      description: String(i.description || '').trim(),
+      qty: Number(i.qty) || 0,
+      unit: invoiceItemUnit(i),
+      amount: invoiceItemAmount(i),
+    };
+    // A line billed from a charge remembers which charge and which period
+    // (its next_due at issue time), so paying the invoice can settle it.
+    const charge = i.charge_id && get('SELECT * FROM charges WHERE id = ? AND project_id = ?', Number(i.charge_id), project.id);
+    if (charge) Object.assign(item, { charge_id: charge.id, period: charge.next_due });
+    return item;
+  });
   if (cleanItems.length === 0) throw new Error('at least one line item is required');
   if (cleanItems.some((i) => !i.description)) throw new Error('every line item needs a description');
 
@@ -462,8 +469,8 @@ app.post('/api/invoices', h((req, res) => {
        (number, kind, project_id, issued_on, supply_date, place, currency, eur_to_rsd,
         seller_json, buyer_json, items_json, subtotal_eur, pdv_rate, pdv_eur, total_eur,
         pdv_exempt, note, created_at,
-        doc_currency, lang, subtotal, pdv, total, due_on, terms, stage, deposit_ref, status)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'issued')`,
+        doc_currency, lang, subtotal, pdv, total, due_on, terms, stage, deposit_ref, status, tracked)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'issued', 1)`,
     number, kind, project.id, issued, supply_date || issued, lang === 'en' ? '' : place, currency,
     eur ? Number(s.eur_to_rsd) || 0 : 0,
     JSON.stringify(seller), JSON.stringify(buyer), JSON.stringify(cleanItems),
@@ -471,6 +478,66 @@ app.post('/api/invoices', h((req, res) => {
     docCurrency, lang, subtotal, pdv, total, terms ? dueDateFor(issued, terms) : null, terms, stage, depositRef
   );
   res.status(201).json(get('SELECT * FROM invoices WHERE id = ?', info.lastInsertRowid));
+}));
+
+// Record a payment against an invoice: either log a new payment, or link an
+// existing unlinked income payment of the same project and currency (e.g. one
+// logged earlier via "Mark paid"). Once the invoice is fully paid, the charges
+// it billed are settled — except on a deposit, whose balance is still to come.
+app.post('/api/invoices/:id/payments', h(async (req, res) => {
+  const inv = get('SELECT * FROM invoices WHERE id = ?', Number(req.params.id));
+  if (!inv) throw new Error('invoice not found');
+  if (inv.status === 'void') throw new Error('invoice is void');
+  if (!inv.tracked) throw new Error('this invoice predates payment tracking');
+  const project = get('SELECT * FROM projects WHERE id = ?', inv.project_id);
+  if (!project) throw new Error("the invoice's project was deleted");
+  const currency = inv.doc_currency || 'EUR';
+  const before = invoiceState(inv, all('SELECT * FROM payments WHERE invoice_id = ?', inv.id), today());
+  if (before.state === 'paid') throw new Error('invoice is already paid');
+
+  let paymentId;
+  db.exec('BEGIN');
+  try {
+    if (req.body.payment_id) {
+      const p = get('SELECT * FROM payments WHERE id = ?', Number(req.body.payment_id));
+      if (!p || p.project_id !== inv.project_id || p.direction !== 'income') throw new Error('payment is not an income payment of this project');
+      if ((p.currency || 'EUR') !== currency) throw new Error(`payment is not in ${currency}`);
+      if (p.invoice_id) throw new Error('payment is already linked to an invoice');
+      run('UPDATE payments SET invoice_id = ? WHERE id = ?', inv.id, p.id);
+      paymentId = p.id;
+    } else {
+      const amount = Number(req.body.amount ?? before.remaining);
+      if (!(amount > 0)) throw new Error('amount must be positive');
+      const tax = paymentTax(amount, currency, null);
+      paymentId = run(
+        `INSERT INTO payments (project_id, direction, amount, currency, paid_on, note, channel, fee, nbs_rate_rsd, amount_rsd, invoice_id)
+         VALUES (?, 'income', ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        inv.project_id, amount, currency, req.body.paid_on || today(), req.body.note || `Invoice ${inv.number}`,
+        checkChannel(req.body.channel || defaultChannel(project)), Number(req.body.fee) || 0,
+        tax.nbs_rate_rsd, tax.amount_rsd, inv.id
+      ).lastInsertRowid;
+    }
+
+    const after = invoiceState(inv, all('SELECT * FROM payments WHERE invoice_id = ?', inv.id), today());
+    if (after.state === 'paid' && inv.stage !== 'deposit') {
+      const paidOn = get('SELECT paid_on FROM payments WHERE id = ?', paymentId).paid_on;
+      const items = JSON.parse(inv.items_json || '[]');
+      for (const id of new Set(items.map((i) => i.charge_id).filter(Boolean))) {
+        const charge = get('SELECT * FROM charges WHERE id = ?', id);
+        const period = items.find((i) => i.charge_id === id).period;
+        // Skip a charge already settled some other way (closed, or its
+        // schedule moved past the billed period) — never double-advance.
+        if (!charge || !charge.active || (charge.frequency !== 'one_time' && charge.next_due !== period)) continue;
+        settleCharge(charge, paidOn);
+      }
+    }
+    db.exec('COMMIT');
+  } catch (e) {
+    db.exec('ROLLBACK');
+    throw e;
+  }
+  await fillNbsRate(paymentId);
+  res.status(201).json(get('SELECT * FROM payments WHERE id = ?', paymentId));
 }));
 
 // Invoices are never deleted — a client may already hold the number. Voiding

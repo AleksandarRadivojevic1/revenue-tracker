@@ -35,6 +35,7 @@ export const api = {
 
   createInvoice: (data) => req('POST', '/api/invoices', data),
   voidInvoice: (id) => req('POST', `/api/invoices/${id}/void`),
+  payInvoice: (id, data) => req('POST', `/api/invoices/${id}/payments`, data),
 
   createOverhead: (data) => req('POST', '/api/overheads', data),
   updateOverhead: (id, data) => req('PUT', `/api/overheads/${id}`, data),

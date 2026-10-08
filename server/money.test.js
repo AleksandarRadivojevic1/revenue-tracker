@@ -20,6 +20,8 @@ import {
   isValidAba,
   paymentRsd,
   quarterlyRollup,
+  invoiceState,
+  balanceReminders,
 } from './money.js';
 
 describe('addMonths', () => {
@@ -338,5 +340,45 @@ describe('invoice line math (new rows)', () => {
   it('reads `unit` on new rows and `unit_eur` on old ones', () => {
     expect(invoiceItemAmount({ qty: 2, unit: 600 })).toBe(1200);
     expect(invoiceItemAmount({ qty: 2, unit_eur: 600 })).toBe(1200);
+  });
+});
+
+describe('invoiceState', () => {
+  const inv = { id: 7, number: '2026-007', tracked: 1, status: 'issued', doc_currency: 'USD', total: 1200, due_on: '2026-09-13' };
+  const pay = (amount, extra = {}) => ({ invoice_id: 7, direction: 'income', currency: 'USD', amount, ...extra });
+
+  it('unpaid before the due date, overdue after it', () => {
+    expect(invoiceState(inv, [], '2026-09-13').state).toBe('unpaid');
+    expect(invoiceState(inv, [], '2026-09-14')).toEqual({ state: 'overdue', total: 1200, paid: 0, remaining: 1200 });
+  });
+  it('partial, then paid once linked payments cover the total', () => {
+    expect(invoiceState(inv, [pay(500)], '2026-09-10')).toEqual({ state: 'partial', total: 1200, paid: 500, remaining: 700 });
+    expect(invoiceState(inv, [pay(500), pay(700)], '2026-09-20').state).toBe('paid');
+  });
+  it('ignores payments for other invoices or in another currency', () => {
+    expect(invoiceState(inv, [pay(1200, { invoice_id: 8 }), pay(1200, { currency: 'EUR' })], '2026-09-10').state).toBe('unpaid');
+  });
+  it('void and pre-tracking invoices are never outstanding', () => {
+    expect(invoiceState({ ...inv, status: 'void' }, [], '2026-12-01').state).toBe('void');
+    expect(invoiceState({ ...inv, tracked: 0 }, [], '2026-12-01').state).toBe('untracked');
+  });
+  it('old EUR rows fall back to total_eur', () => {
+    expect(invoiceState({ id: 1, tracked: 1, total_eur: 800 }, [], '2026-01-01').total).toBe(800);
+  });
+});
+
+describe('balanceReminders', () => {
+  const dep = { id: 1, number: '2026-001', stage: 'deposit', tracked: 1, doc_currency: 'USD', total: 600 };
+  const paid = [{ invoice_id: 1, direction: 'income', currency: 'USD', amount: 600 }];
+  it('flags a paid deposit with no balance invoice yet', () => {
+    expect(balanceReminders([dep], paid, '2026-09-10').map((i) => i.number)).toEqual(['2026-001']);
+  });
+  it('clears once a balance invoice references it, unless that one is void', () => {
+    const bal = { id: 2, number: '2026-002', stage: 'balance', deposit_ref: '2026-001', status: 'issued' };
+    expect(balanceReminders([dep, bal], paid, '2026-09-10')).toEqual([]);
+    expect(balanceReminders([dep, { ...bal, status: 'void' }], paid, '2026-09-10')).toHaveLength(1);
+  });
+  it('waits until the deposit is actually paid', () => {
+    expect(balanceReminders([dep], [], '2026-09-10')).toEqual([]);
   });
 });

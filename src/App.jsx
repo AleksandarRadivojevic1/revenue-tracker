@@ -73,6 +73,7 @@ export default function App() {
 
   async function createInvoice(d) { const inv = await api.createInvoice(d); await reload(); return inv; }
   async function voidInvoice(id) { await api.voidInvoice(id); await reload(); }
+  async function payInvoice(id, d) { await api.payInvoice(id, d); await reload(); }
 
   async function createOverhead(d) { await api.createOverhead(d); await reload(); }
   async function updateOverhead(id, d) { await api.updateOverhead(id, d); await reload(); }
@@ -113,7 +114,7 @@ export default function App() {
       </header>
 
       {view.name === 'dashboard' && (
-        <Dashboard data={data} onOpenProject={(id) => go('project', id)}
+        <Dashboard data={data} onOpenProject={(id) => go('project', id)} onOpenInvoices={() => go('invoices')}
           createProject={createProject} payCharge={payCharge}
           createOverhead={createOverhead} updateOverhead={updateOverhead}
           deleteOverhead={deleteOverhead} payOverhead={payOverhead} />
@@ -125,7 +126,7 @@ export default function App() {
           payCharge={payCharge} updatePayment={updatePayment} deletePayment={deletePayment} />
       )}
       {view.name === 'invoices' && (
-        <Invoices data={data} createInvoice={createInvoice} voidInvoice={voidInvoice} />
+        <Invoices data={data} createInvoice={createInvoice} voidInvoice={voidInvoice} payInvoice={payInvoice} />
       )}
       {view.name === 'settings' && (
         <Settings data={data} saveSettings={saveSettings} reload={reload} />

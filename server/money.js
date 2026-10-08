@@ -220,6 +220,42 @@ export function invoiceTotals(items, pdvRate = 0) {
   return { subtotal, pdv, total: subtotal + pdv };
 }
 
+/** An invoice's total in its own currency (old rows only have *_eur). */
+export const invoiceTotal = (inv) => Number(inv.total ?? (inv.total_eur || inv.subtotal_eur)) || 0;
+
+/**
+ * Payment state of an invoice from the payments linked to it (same currency
+ * only). Invoices issued before payment tracking existed are 'untracked' —
+ * they were settled through their charges and never show as outstanding.
+ * Returns { state: void|untracked|paid|partial|unpaid|overdue, total, paid, remaining }.
+ */
+export function invoiceState(invoice, payments, today) {
+  const total = invoiceTotal(invoice);
+  if (invoice.status === 'void') return { state: 'void', total, paid: 0, remaining: 0 };
+  if (!invoice.tracked) return { state: 'untracked', total, paid: 0, remaining: 0 };
+  const cur = invoice.doc_currency || 'EUR';
+  const paid = payments
+    .filter((p) => p.invoice_id === invoice.id && p.direction === 'income' && currencyOf(p) === cur)
+    .reduce((s, p) => s + (Number(p.amount) || 0), 0);
+  const remaining = Math.max(Math.round((total - paid) * 100) / 100, 0);
+  if (remaining === 0) return { state: 'paid', total, paid, remaining };
+  const late = invoice.due_on && invoice.due_on < today;
+  return { state: late ? 'overdue' : paid > 0 ? 'partial' : 'unpaid', total, paid, remaining };
+}
+
+/**
+ * Paid deposit invoices still waiting for their balance invoice — i.e. no
+ * non-void balance invoice references them yet.
+ */
+export function balanceReminders(invoices, payments, today) {
+  const referenced = new Set(
+    invoices.filter((i) => i.stage === 'balance' && i.status !== 'void').map((i) => i.deposit_ref)
+  );
+  return invoices.filter((i) =>
+    i.stage === 'deposit' && !referenced.has(i.number) && invoiceState(i, payments, today).state === 'paid'
+  );
+}
+
 /** Due date for payment terms: 'Net 7' / 'Net 14' add days; anything else is due on issue. */
 export function dueDateFor(issuedOn, terms) {
   const m = /^Net (\d+)$/.exec(terms || '');
