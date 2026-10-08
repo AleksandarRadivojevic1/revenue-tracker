@@ -1,8 +1,11 @@
-import { DatabaseSync } from 'node:sqlite';
+import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+// Loaded via require so Vite/Vitest (which don't know this newer builtin and
+// strip the `node:` prefix) leave it alone; plain Node behaves identically.
+const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite');
 const DB_PATH = process.env.DB_PATH || join(__dirname, '..', 'payments.db');
 
 export const db = new DatabaseSync(DB_PATH);
@@ -235,6 +238,29 @@ db.exec(`
     created_at TEXT NOT NULL DEFAULT (date('now')),
     updated_at TEXT NOT NULL DEFAULT (date('now'))
   );
+`);
+
+// Which charge period a payment paid (see money.js chargePeriodKey) — lets a
+// charge be paid in parts. NULL on older payments, which were always in full.
+ensureColumn('payments', 'charge_period', 'TEXT');
+
+// Projects can point at their site in seo-cockpit (/site/<slug>).
+ensureColumn('projects', 'site_slug', "TEXT DEFAULT ''");
+ensureColumn('settings', 'seo_cockpit_url', "TEXT DEFAULT ''");
+
+// Edit history for money records that are tax evidence. Payments are
+// corrected in place, so every changed field (and every delete) is kept here.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS audit_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    entity TEXT NOT NULL,          -- 'payment'
+    entity_id INTEGER NOT NULL,
+    field TEXT NOT NULL,           -- column name, or '(deleted)'
+    old TEXT,
+    new TEXT,
+    changed_at TEXT NOT NULL       -- Belgrade local time
+  );
+  CREATE INDEX IF NOT EXISTS audit_log_entity ON audit_log (entity, entity_id);
 `);
 
 // Cache of NBS middle rates (currency → RSD) by date, filled on demand.

@@ -59,6 +59,8 @@ export default function Settings({ data, saveSettings }) {
   const [enSaved, setEnSaved] = useState(false);
   const [enErr, setEnErr] = useState('');
   const [taxBasis, setTaxBasis] = useState(settings.tax_date_basis || 'paid_on');
+  const [cockpitUrl, setCockpitUrl] = useState(settings.seo_cockpit_url || '');
+  const [cockpitSaved, setCockpitSaved] = useState(false);
   const routingBad = payout.routing_aba && !isValidAba(payout.routing_aba);
 
   async function save() {
@@ -102,6 +104,15 @@ export default function Settings({ data, saveSettings }) {
     try { await saveSettings({ tax_date_basis: v }); } catch (e) { setErr(e.message); }
   }
 
+  async function saveCockpit() {
+    setErr(''); setCockpitSaved(false);
+    try {
+      await saveSettings({ seo_cockpit_url: cockpitUrl });
+      setCockpitSaved(true);
+      setTimeout(() => setCockpitSaved(false), 2000);
+    } catch (e) { setErr(e.message); }
+  }
+
   function exportJson() {
     const payload = {
       exported_at: new Date().toISOString(),
@@ -113,6 +124,7 @@ export default function Settings({ data, saveSettings }) {
       invoices: data.invoices,
       transfers: data.transfers,
       leads: data.leads,
+      audit_log: data.audit_log,
       settings: data.settings,
     };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
@@ -247,6 +259,21 @@ export default function Settings({ data, saveSettings }) {
           <option value="paid_on">Paid-on date</option>
           <option value="received_on">Date credited in Payoneer (falls back to paid-on)</option>
         </select>
+      </div>
+
+      <h2 className="section-title">seo-cockpit</h2>
+      <div className="card">
+        <p className="page-sub" style={{ marginTop: 0 }}>
+          Base URL of your seo-cockpit. Projects with a site slug then link to their SEO dashboard and monthly report.
+        </p>
+        <div className="field-row" style={{ alignItems: 'flex-end' }}>
+          <div className="field" style={{ marginBottom: 0 }}>
+            <label>seo-cockpit URL</label>
+            <input className="input" value={cockpitUrl} onChange={(e) => setCockpitUrl(e.target.value)} placeholder="http://<pi-address>:8091" />
+          </div>
+          <button className="btn btn-primary" onClick={saveCockpit} style={{ marginBottom: 0 }}>Save</button>
+        </div>
+        {cockpitSaved && <p className="inline-note" style={{ color: 'var(--color-vivid-green)' }}>Saved.</p>}
       </div>
 
       <h2 className="section-title">PDV (VAT)</h2>

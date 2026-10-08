@@ -25,6 +25,8 @@ import {
   transferCost,
   transferCostRows,
   payoneerBalance,
+  chargeRemaining,
+  businessNow,
 } from './money.js';
 
 describe('addMonths', () => {
@@ -408,5 +410,27 @@ describe('transfers', () => {
       { direction: 'income', currency: 'EUR', amount: 800, channel: 'domestic' },
     ];
     expect(payoneerBalance(payments, [t])).toEqual({ USD: 488 });
+  });
+});
+
+describe('chargeRemaining', () => {
+  const c = { id: 5, amount: 2400, next_due: '2026-10-01' };
+  it('counts only payments for the current period', () => {
+    const payments = [
+      { charge_id: 5, amount: 1200, charge_period: '2026-10-01' },
+      { charge_id: 5, amount: 999, charge_period: '2026-09-01' }, // earlier period
+      { charge_id: 6, amount: 999, charge_period: '2026-10-01' }, // other charge
+      { charge_id: 5, amount: 999, charge_period: null },         // pre-partial payment
+    ];
+    expect(chargeRemaining(c, payments)).toBe(1200);
+  });
+  it("uses 'open' as the period of an undated charge", () => {
+    expect(chargeRemaining({ id: 1, amount: 100, next_due: null }, [{ charge_id: 1, amount: 30, charge_period: 'open' }])).toBe(70);
+  });
+});
+
+describe('businessNow', () => {
+  it('stamps Belgrade local time', () => {
+    expect(businessNow(new Date('2026-09-05T22:30:00Z'))).toBe('2026-09-06 00:30:00');
   });
 });

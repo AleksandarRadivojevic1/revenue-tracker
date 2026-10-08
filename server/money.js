@@ -21,6 +21,31 @@ export function businessToday(now = new Date()) {
   return now.toLocaleDateString('sv-SE', { timeZone: 'Europe/Belgrade' });
 }
 
+/** Current Belgrade date-time, "YYYY-MM-DD HH:MM:SS" — for audit stamps. */
+export function businessNow(now = new Date()) {
+  return now.toLocaleString('sv-SE', { timeZone: 'Europe/Belgrade' });
+}
+
+/**
+ * Key for the charge period a payment belongs to: the charge's next_due at
+ * pay time, or 'open' for an undated charge. Lets a charge be paid in parts
+ * (e.g. a 50/50 deposit + balance) and close only once the period is covered.
+ */
+export const chargePeriodKey = (charge) => charge.next_due || 'open';
+
+/** Already paid towards a charge's current period. */
+export function chargePaidSoFar(charge, payments) {
+  const key = chargePeriodKey(charge);
+  return payments
+    .filter((p) => p.charge_id === charge.id && p.charge_period === key)
+    .reduce((s, p) => s + (Number(p.amount) || 0), 0);
+}
+
+/** Still owed on a charge's current period (never negative). */
+export function chargeRemaining(charge, payments) {
+  return Math.max(Math.round(((Number(charge.amount) || 0) - chargePaidSoFar(charge, payments)) * 100) / 100, 0);
+}
+
 /** Add whole days to an ISO date (YYYY-MM-DD). */
 export function addDays(isoDate, days) {
   const [y, m, d] = isoDate.split('-').map(Number);

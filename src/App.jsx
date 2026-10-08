@@ -69,7 +69,7 @@ export default function App() {
   async function createCharge(d) { await api.createCharge(d); await reload(); }
   async function updateCharge(id, d) { await api.updateCharge(id, d); await reload(); }
   async function deleteCharge(id) { await api.deleteCharge(id); await reload(); }
-  async function payCharge(id) { await api.payCharge(id); await reload(); }
+  async function payCharge(id, d) { await api.payCharge(id, d); await reload(); }
   async function updatePayment(id, d) { await api.updatePayment(id, d); await reload(); }
   async function deletePayment(id) { await api.deletePayment(id); await reload(); }
 

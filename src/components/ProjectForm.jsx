@@ -32,6 +32,7 @@ export default function ProjectForm({ initial, settings, onSubmit, onClose }) {
     client_email: initial?.client_email || '',
     sow_ref: initial?.sow_ref || '',
     w8ben_sent_on: initial?.w8ben_sent_on || '',
+    site_slug: initial?.site_slug || '',
   });
   const isDomestic = form.client_country === 'RS';
 
@@ -260,6 +261,12 @@ export default function ProjectForm({ initial, settings, onSubmit, onClose }) {
       )}
 
       <div className="field" style={{ marginTop: 14 }}>
+        <label>seo-cockpit site slug (links this project to its SEO dashboard &amp; monthly report)</label>
+        <input className="input" value={form.site_slug} onChange={(e) => setForm({ ...form, site_slug: e.target.value.toLowerCase() })}
+          placeholder="e.g. optika-cajs" />
+      </div>
+
+      <div className="field">
         <label>Notes</label>
         <textarea className="input" rows={2} value={form.notes} onChange={set('notes')} />
       </div>

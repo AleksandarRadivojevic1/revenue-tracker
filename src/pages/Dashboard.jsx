@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import {
-  balanceReminders, chargeStatus, chargeMrr, currencyOf, invoiceState, overheadMonthly, paymentsRollup, payoneerBalance,
+  balanceReminders, chargeRemaining, chargeStatus, chargeMrr, currencyOf, invoiceState, overheadMonthly, paymentsRollup, payoneerBalance,
   perCurrency, quarterlyRollup, transferCost, transferCostRows, yearlyRollup,
 } from '../../server/money.js';
 import { formatMoney, formatAmounts, formatDate, FREQUENCY_LABEL, INVOICE_STATE_META } from '../format.js';
@@ -26,6 +26,7 @@ export default function Dashboard({
   const [payingKey, setPayingKey] = useState(null);
   const [invoicing, setInvoicing] = useState(null); // charge row to invoice
   const [transferModal, setTransferModal] = useState(null); // { initial? } | null
+  const [showArchived, setShowArchived] = useState(false);
   const compact = useMediaQuery('(max-width: 560px)');
 
   // KPIs per currency — EUR and USD are never added together. Each currency
@@ -51,6 +52,10 @@ export default function Dashboard({
     return m;
   }, [projects, charges, payments]);
 
+  // Archived projects stay in every total; they're only hidden from the grid.
+  const archivedCount = projects.filter((p) => p.status === 'archived').length;
+  const visibleProjects = showArchived ? projects : projects.filter((p) => p.status !== 'archived');
+
   const projectName = (id) => projects.find((p) => p.id === id)?.name || '—';
 
   // Charges and overheads that are due soon or overdue, merged into one list.
@@ -59,7 +64,9 @@ export default function Dashboard({
       .filter((c) => c.active && c.next_due)
       .map((c) => ({
         kind: 'charge', id: c.id, source: projectName(c.project_id), projectId: c.project_id, charge: c,
-        label: c.label || c.category, frequency: c.frequency, next_due: c.next_due, amount: c.amount, currency: currencyOf(c),
+        // What's left on this period — less than the charge once part-paid.
+        label: c.label || c.category, frequency: c.frequency, next_due: c.next_due,
+        amount: chargeRemaining(c, payments), currency: currencyOf(c),
         status: chargeStatus(c.next_due, today),
       }));
     const fromOverheads = overheads
@@ -72,7 +79,7 @@ export default function Dashboard({
     return [...fromCharges, ...fromOverheads]
       .filter((r) => r.status === 'overdue' || r.status === 'due_soon')
       .sort((a, b) => a.next_due.localeCompare(b.next_due));
-  }, [charges, overheads, today]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [charges, overheads, payments, today]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // One row per year and currency, newest year first.
   const invoiced = useMemo(() => invoicedPeriods(invoices), [invoices]);
@@ -398,12 +405,19 @@ export default function Dashboard({
         Domestic payments are excluded. Confirm the date rule and gross basis with your accountant before filing.
       </p>
 
-      <h2 className="section-title">Projects</h2>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '32px 0 12px' }}>
+        <h2 className="section-title" style={{ margin: 0 }}>Projects</h2>
+        {archivedCount > 0 && (
+          <button className="btn btn-sm btn-ghost" onClick={() => setShowArchived(!showArchived)}>
+            {showArchived ? 'Hide archived' : `Show archived (${archivedCount})`}
+          </button>
+        )}
+      </div>
       {projects.length === 0 ? (
         <div className="card"><div className="empty">No projects yet. Create your first one.</div></div>
       ) : (
         <div className="grid">
-          {projects.map((p) => {
+          {visibleProjects.map((p) => {
             const bucket = byProject.get(p.id) || { charges: [], payments: [] };
             const roll = perCurrency([bucket.payments], (c) => paymentsRollup(bucket.payments, c));
             const pkg = packageMeta(p.package);
