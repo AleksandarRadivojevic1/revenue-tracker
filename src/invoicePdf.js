@@ -146,6 +146,17 @@ export function buildInvoiceDocDefinition(invoice) {
   return docDefinition;
 }
 
+/**
+ * One amount exactly as the invoice prints it — shared with the email
+ * template so the two never disagree. ('sr' BOTH collapses to one line.)
+ */
+export function invoiceAmountText(invoice, n) {
+  const docCur = invoice.doc_currency || 'EUR';
+  if (invoice.lang === 'en') return new Intl.NumberFormat('en-US', { style: 'currency', currency: docCur }).format(Number(n) || 0);
+  if (docCur !== 'EUR') return native(n, docCur);
+  return money(n, invoice.currency, invoice.eur_to_rsd).replace('\n', ' ');
+}
+
 // --- English (US client) invoice -------------------------------------------
 
 const EN_TITLE = { full: 'INVOICE', deposit: 'DEPOSIT INVOICE', balance: 'INVOICE — BALANCE' };

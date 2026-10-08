@@ -190,6 +190,9 @@ ensureColumn('payments', 'amount_rsd', 'REAL');         // gross × rate, snapsh
 // outstanding — they were settled through their charges.
 ensureColumn('payments', 'invoice_id', 'INTEGER REFERENCES invoices(id) ON DELETE SET NULL');
 ensureColumn('invoices', 'tracked', 'INTEGER DEFAULT 0');
+// Payoneer payment-request link for the cover email. Not printed on the PDF,
+// so it's the one invoice field that may be set after issue.
+ensureColumn('invoices', 'payment_link', "TEXT DEFAULT ''");
 
 // Cache of NBS middle rates (currency → RSD) by date, filled on demand.
 db.exec(`

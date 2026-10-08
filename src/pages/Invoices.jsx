@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import Modal from '../components/Modal.jsx';
 import { formatMoney, formatDate, CURRENCY_LABEL, INVOICE_STATE_META } from '../format.js';
 import { downloadInvoicePdf } from '../invoicePdf.js';
+import { invoiceEmail, mailtoHref } from '../invoiceEmail.js';
 import { CURRENCIES, businessToday as today, currencyOf, invoiceState } from '../../server/money.js';
 import { CHANNELS } from '../components/PaymentForm.jsx';
 
@@ -17,10 +18,11 @@ const docTotal = (inv) => inv.total ?? (inv.total_eur || inv.subtotal_eur);
 // EUR documents honor the EUR ⇄ RSD toggle; USD/RSD documents show as-is.
 const fmtDoc = (n, inv, settings) => formatMoney(n, docCurrency(inv), docCurrency(inv) === 'EUR' ? settings : undefined);
 
-export default function Invoices({ data, createInvoice, voidInvoice, payInvoice }) {
+export default function Invoices({ data, createInvoice, voidInvoice, payInvoice, setPaymentLink }) {
   const { invoices, projects, charges, payments, settings } = data;
   const [showNew, setShowNew] = useState(false);
   const [paying, setPaying] = useState(null); // invoice row being paid
+  const [emailing, setEmailing] = useState(null); // invoice id whose email is open
   const hasSellerPib = Boolean(settings.seller_pib && settings.seller_pib.trim());
   const issuedCount = invoices.filter((i) => i.status !== 'void').length;
 
@@ -82,6 +84,7 @@ export default function Invoices({ data, createInvoice, voidInvoice, payInvoice 
                             <button className="btn btn-sm" onClick={() => setPaying(inv)}>Record payment</button>
                           )}
                           <button className="btn btn-sm" onClick={() => downloadInvoicePdf(inv)}>PDF</button>
+                          {!isVoid && <button className="btn btn-sm btn-ghost" onClick={() => setEmailing(inv.id)}>Email</button>}
                           {!isVoid && (
                             <button className="btn btn-sm btn-ghost btn-danger" title="Void — keeps the number, stamps the PDF VOID"
                               onClick={() => { if (confirm(`Void invoice ${inv.number}? The number stays used and the PDF is stamped VOID. This can't be undone.`)) voidInvoice(inv.id); }}>
@@ -99,6 +102,10 @@ export default function Invoices({ data, createInvoice, voidInvoice, payInvoice 
         )}
       </div>
 
+      {emailing && (
+        <InvoiceEmailModal invoice={invoices.find((i) => i.id === emailing)}
+          onSaveLink={(link) => setPaymentLink(emailing, link)} onClose={() => setEmailing(null)} />
+      )}
       {paying && (
         <InvoicePaymentForm invoice={paying} payments={payments} settings={settings} today={data.today}
           onSubmit={(d) => payInvoice(paying.id, d)} onClose={() => setPaying(null)} />
@@ -416,6 +423,61 @@ function InvoicePaymentForm({ invoice, payments, settings, today: todayIso, onSu
           </select>
         </div>
       )}
+    </Modal>
+  );
+}
+
+// Cover email for an invoice: copy it, or open it in the mail app. The PDF
+// has to be attached by hand (mailto can't carry attachments).
+function InvoiceEmailModal({ invoice, onSaveLink, onClose }) {
+  const [link, setLink] = useState(invoice.payment_link || '');
+  const [error, setError] = useState('');
+  const [copied, setCopied] = useState('');
+  const mail = invoiceEmail({ ...invoice, payment_link: link.trim() });
+  const linkDirty = link.trim() !== (invoice.payment_link || '');
+
+  async function copy(what, text) {
+    try { await navigator.clipboard.writeText(text); setCopied(what); setTimeout(() => setCopied(''), 1500); }
+    catch { setError('Clipboard not available — select the text and copy it.'); }
+  }
+  async function saveLink() {
+    setError('');
+    try { await onSaveLink(link.trim()); } catch (e) { setError(e.message); }
+  }
+
+  return (
+    <Modal
+      title={`Email for ${invoice.number}`}
+      onClose={onClose}
+      footer={
+        <>
+          <button className="btn" onClick={() => downloadInvoicePdf(invoice)}>Download PDF</button>
+          <a className="btn btn-primary" href={mailtoHref(mail)}>Open in mail app</a>
+        </>
+      }
+    >
+      {error && <div className="form-error">{error}</div>}
+      {invoice.lang === 'en' && (
+        <div className="field">
+          <label>Payoneer payment link (optional — email only, not on the PDF)</label>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <input className="input" value={link} onChange={(e) => setLink(e.target.value)} placeholder="https://…" />
+            <button className="btn btn-sm" onClick={saveLink} disabled={!linkDirty}>Save</button>
+          </div>
+        </div>
+      )}
+      <div className="field">
+        <label>To</label>
+        <input className="input" readOnly value={mail.to} placeholder="No billing email on the project" />
+      </div>
+      <div className="field">
+        <label>Subject <button className="btn btn-sm btn-ghost" onClick={() => copy('subject', mail.subject)}>{copied === 'subject' ? 'Copied' : 'Copy'}</button></label>
+        <input className="input" readOnly value={mail.subject} />
+      </div>
+      <div className="field">
+        <label>Body <button className="btn btn-sm btn-ghost" onClick={() => copy('body', mail.body)}>{copied === 'body' ? 'Copied' : 'Copy'}</button></label>
+        <textarea className="input" readOnly rows={12} value={mail.body} />
+      </div>
     </Modal>
   );
 }

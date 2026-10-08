@@ -540,6 +540,17 @@ app.post('/api/invoices/:id/payments', h(async (req, res) => {
   res.status(201).json(get('SELECT * FROM payments WHERE id = ?', paymentId));
 }));
 
+// The payment link goes in the cover email only (never on the frozen PDF), so
+// it can be added once Payoneer has created the payment request.
+app.put('/api/invoices/:id/payment-link', h((req, res) => {
+  const inv = get('SELECT * FROM invoices WHERE id = ?', Number(req.params.id));
+  if (!inv) throw new Error('invoice not found');
+  const link = String(req.body.payment_link || '').trim();
+  if (link && !/^https:\/\/\S+$/.test(link)) throw new Error('payment link must be an https:// URL');
+  run('UPDATE invoices SET payment_link = ? WHERE id = ?', link, inv.id);
+  res.json(get('SELECT * FROM invoices WHERE id = ?', inv.id));
+}));
+
 // Invoices are never deleted — a client may already hold the number. Voiding
 // keeps the row and its number, stamps the PDF VOID and drops it from totals.
 app.post('/api/invoices/:id/void', h((req, res) => {
