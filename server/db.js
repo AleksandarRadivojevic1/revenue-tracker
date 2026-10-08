@@ -177,6 +177,9 @@ ensureColumn('settings', 'seller_phone', "TEXT DEFAULT ''");
 ensureColumn('settings', 'seller_entity_type', "TEXT DEFAULT 'individual'"); // individual | preduzetnik | doo
 ensureColumn('settings', 'payout_usd_json', "TEXT DEFAULT '{}'");        // USD receiving account
 ensureColumn('settings', 'tax_date_basis', "TEXT DEFAULT 'paid_on'");    // paid_on | received_on
+// 1 = English invoices also carry the Serbian title ("INVOICE / RAČUN"), if
+// the accountant says foreign invoices need it once registered.
+ensureColumn('settings', 'en_title_bilingual', 'INTEGER DEFAULT 0');
 
 // Tax records per payment, for the quarterly freelancer filing.
 ensureColumn('payments', 'received_on', 'TEXT');        // credited in Payoneer

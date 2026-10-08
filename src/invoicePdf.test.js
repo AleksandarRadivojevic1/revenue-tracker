@@ -159,6 +159,13 @@ describe('English (US) invoice', () => {
     expect(enText({ seller_json: JSON.stringify(seller) })).toContain('Tax ID (PIB): 111222333');
   });
 
+  it('adds the Serbian title only when issued with the bilingual setting', () => {
+    const seller = { ...JSON.parse(en.seller_json), pib: '111222333', title_bilingual: true };
+    const text = enText({ kind: 'racun', seller_json: JSON.stringify(seller) });
+    expect(text).toContain('INVOICE / RAČUN');
+    expect(enText({ kind: 'racun' })).not.toContain('RAČUN');
+  });
+
   it('uses US Letter with the separator sized to the page', () => {
     const doc = buildInvoiceDocDefinition(en);
     expect(doc.pageSize).toBe('LETTER');

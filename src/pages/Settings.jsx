@@ -50,6 +50,7 @@ export default function Settings({ data, saveSettings }) {
   const [sellerEn, setSellerEn] = useState({
     ...Object.fromEntries(SELLER_EN_FIELDS.map(([k]) => [k, settings[k] || ''])),
     seller_entity_type: settings.seller_entity_type || 'individual',
+    en_title_bilingual: settings.en_title_bilingual ? 1 : 0,
   });
   const [payout, setPayout] = useState(() => {
     const p = parsePayout(settings.payout_usd_json);
@@ -205,6 +206,12 @@ export default function Settings({ data, saveSettings }) {
             <option value="doo">DOO — clients get a W-8BEN-E</option>
           </select>
         </div>
+
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+          <input type="checkbox" checked={!!sellerEn.en_title_bilingual}
+            onChange={(e) => setSellerEn({ ...sellerEn, en_title_bilingual: e.target.checked ? 1 : 0 })} />
+          <span>Also print the Serbian title (“INVOICE / RAČUN”) — only if your accountant says foreign invoices need it</span>
+        </label>
 
         <h3 className="section-title" style={{ fontSize: 14 }}>USD receiving account</h3>
         <p className="inline-note" style={{ marginTop: 0 }}>

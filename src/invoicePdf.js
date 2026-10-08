@@ -204,6 +204,14 @@ function usdPaymentBlock(invoice, seller, buyer) {
   return out;
 }
 
+// "INVOICE", or "INVOICE / RAČUN" when the invoice was issued with the
+// bilingual-title setting on (snapshotted on the seller).
+function enTitle(invoice, seller, stage) {
+  const en = EN_TITLE[stage] || 'INVOICE';
+  if (!seller.title_bilingual) return en;
+  return `${en} / ${invoice.kind === 'racun' ? 'RAČUN' : 'PREDRAČUN'}`;
+}
+
 export function buildEnglishDocDefinition(invoice) {
   const seller = JSON.parse(invoice.seller_json || '{}');
   const buyer = JSON.parse(invoice.buyer_json || '{}');
@@ -217,7 +225,7 @@ export function buildEnglishDocDefinition(invoice) {
   const contentWidth = LETTER_WIDTH - 2 * EN_MARGIN;
 
   const meta = [
-    { text: EN_TITLE[stage] || 'INVOICE', style: 'title', alignment: 'right' },
+    { text: enTitle(invoice, seller, stage), style: 'title', alignment: 'right' },
     { text: `Invoice No. ${invoice.number}`, alignment: 'right' },
     { text: `Issue date: ${formatDateLong(invoice.issued_on)}`, alignment: 'right' },
     { text: `Due date: ${formatDateLong(invoice.due_on || invoice.issued_on)}`, alignment: 'right', bold: true },

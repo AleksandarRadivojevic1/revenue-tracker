@@ -431,6 +431,7 @@ app.post('/api/invoices', h((req, res) => {
     mb: s.seller_mb, bank: s.seller_bank, note: s.seller_note,
     name_en: s.seller_name_en, brand: s.seller_brand, address_en: s.seller_address_en,
     email: s.seller_email, phone: s.seller_phone, entity_type: s.seller_entity_type,
+    title_bilingual: Boolean(s.en_title_bilingual),
   };
   const clientType = project.client_type || 'company';
   // A USD invoice carries the receiving-account details as of today. Snapshotted
@@ -630,13 +631,13 @@ app.put('/api/settings', h((req, res) => {
        seller_name=?, seller_address=?, seller_pib=?, seller_mb=?, seller_bank=?, seller_note=?,
        pdv_obveznik=?, pdv_rate=?,
        seller_name_en=?, seller_brand=?, seller_address_en=?, seller_email=?, seller_phone=?,
-       seller_entity_type=?, payout_usd_json=?, tax_date_basis=?
+       seller_entity_type=?, payout_usd_json=?, tax_date_basis=?, en_title_bilingual=?
      WHERE id=1`,
     m.base_currency, Number(m.eur_to_rsd), m.display_currency,
     m.seller_name, m.seller_address, m.seller_pib, m.seller_mb, m.seller_bank, m.seller_note,
     m.pdv_obveznik ? 1 : 0, Number(m.pdv_rate) || 0,
     m.seller_name_en, m.seller_brand, m.seller_address_en, m.seller_email, m.seller_phone,
-    m.seller_entity_type, JSON.stringify(cleanPayout), m.tax_date_basis
+    m.seller_entity_type, JSON.stringify(cleanPayout), m.tax_date_basis, m.en_title_bilingual ? 1 : 0
   );
   res.json(readSettings());
 }));
