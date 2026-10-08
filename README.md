@@ -48,8 +48,18 @@ business dates) and the invoice PDFs in `src/invoicePdf.js` (Serbian and English
   US Letter invoice with due date, deposit/balance stages and payment
   instructions. Invoices are **voided, never deleted**, so a number is never
   reused.
-- **Tax** — foreign payments record channel, Payoneer fee and the NBS rate of
-  the day; the dashboard shows the freelancer tax base (gross RSD) per quarter.
+- **Invoice payments** — record a payment against an invoice (or link one
+  already logged, so nothing counts twice); invoices show paid / part paid /
+  overdue, and paying one settles the charges it billed. The dashboard lists
+  what's outstanding and paid deposits still waiting for a balance invoice.
+  Each invoice has a ready-to-send cover email.
+- **Tax** — foreign payments record channel, Payoneer fee and the NBS middle
+  rate of the day (fetched automatically from kurs.resenje.org, so the server
+  needs outbound internet; offline it just leaves the rate for manual entry).
+  The dashboard shows the freelancer tax base (gross RSD) per quarter.
+- **Payoneer → bank transfers** — logged with their conversion cost vs NBS
+  rates (an expense), plus what's still held in Payoneer.
+- **Leads** — a small sales pipeline (CSV import, follow-ups, won → project).
 - **Private details** — the Payoneer name/address and USD receiving account live
   only in `payments.db` (via Settings), never in this public repo.
 
