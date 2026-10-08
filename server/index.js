@@ -9,6 +9,7 @@ import {
 } from './money.js';
 import { basicAuth } from './auth.js';
 import { createNbsClient } from './nbs.js';
+import { LEAD_STATUSES } from './leads.js';
 import { scheduleBackups } from './backup.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -109,6 +110,7 @@ app.get('/api/bootstrap', h((_req, res) => {
     overhead_payments: all('SELECT * FROM overhead_payments ORDER BY paid_on DESC, id DESC'),
     invoices: all('SELECT * FROM invoices ORDER BY created_at DESC, id DESC'),
     transfers: all('SELECT * FROM transfers ORDER BY transferred_on DESC, id DESC'),
+    leads: all('SELECT * FROM leads ORDER BY updated_at DESC, id DESC'),
     settings: readSettings(),
     today: today(),
   });
@@ -610,6 +612,103 @@ app.put('/api/transfers/:id', h(async (req, res) => {
 app.delete('/api/transfers/:id', h((req, res) => {
   run('DELETE FROM transfers WHERE id = ?', Number(req.params.id));
   res.json({ ok: true });
+}));
+
+// --- leads -------------------------------------------------------------------
+const LEAD_FIELDS = {
+  company: '', contact: '', email: '', phone: '', website: '', country: 'US', source: '',
+  status: 'new', value: null, currency: 'USD', next_action: '', next_action_on: null, notes: '',
+};
+
+function cleanLead(m) {
+  const l = { ...m };
+  for (const k of ['company', 'contact', 'email', 'phone', 'website', 'source', 'next_action', 'notes']) l[k] = String(l[k] ?? '').trim();
+  if (!l.company && !l.email) throw new Error('a lead needs a company or an email');
+  if (!LEAD_STATUSES.includes(l.status)) throw new Error('invalid lead status');
+  l.country = String(l.country || 'US').trim().toUpperCase().slice(0, 2);
+  l.currency = checkCurrency(l.currency || 'USD');
+  l.value = l.value === '' || l.value == null ? null : Number(l.value);
+  if (l.value != null && Number.isNaN(l.value)) throw new Error('value must be a number');
+  l.next_action_on = l.next_action_on || null;
+  return l;
+}
+
+const LEAD_COLS = Object.keys(LEAD_FIELDS);
+const insertLead = (l) => run(
+  `INSERT INTO leads (${LEAD_COLS.join(', ')}, created_at, updated_at) VALUES (${LEAD_COLS.map(() => '?').join(', ')}, ?, ?)`,
+  ...LEAD_COLS.map((c) => l[c]), today(), today()
+).lastInsertRowid;
+
+app.post('/api/leads', h((req, res) => {
+  const id = insertLead(cleanLead({ ...LEAD_FIELDS, ...req.body }));
+  res.status(201).json(get('SELECT * FROM leads WHERE id = ?', id));
+}));
+
+app.put('/api/leads/:id', h((req, res) => {
+  const existing = get('SELECT * FROM leads WHERE id = ?', Number(req.params.id));
+  if (!existing) throw new Error('lead not found');
+  const l = cleanLead({ ...existing, ...req.body });
+  run(`UPDATE leads SET ${LEAD_COLS.map((c) => `${c}=?`).join(', ')}, updated_at=? WHERE id=?`,
+    ...LEAD_COLS.map((c) => l[c]), today(), existing.id);
+  res.json(get('SELECT * FROM leads WHERE id = ?', existing.id));
+}));
+
+app.delete('/api/leads/:id', h((req, res) => {
+  run('DELETE FROM leads WHERE id = ?', Number(req.params.id));
+  res.json({ ok: true });
+}));
+
+// Bulk import (rows parsed client-side from CSV). A row whose email already
+// belongs to a lead is skipped, so re-importing a list never duplicates.
+app.post('/api/leads/import', h((req, res) => {
+  const rows = Array.isArray(req.body.rows) ? req.body.rows : [];
+  const known = new Set(all("SELECT lower(email) AS e FROM leads WHERE email <> ''").map((r) => r.e));
+  let added = 0;
+  let skipped = 0;
+  db.exec('BEGIN');
+  try {
+    for (const r of rows) {
+      const email = String(r.email || '').trim().toLowerCase();
+      if (email && known.has(email)) { skipped++; continue; }
+      insertLead(cleanLead({ ...LEAD_FIELDS, source: req.body.source || '', ...r }));
+      if (email) known.add(email);
+      added++;
+    }
+    db.exec('COMMIT');
+  } catch (e) {
+    db.exec('ROLLBACK');
+    throw e;
+  }
+  res.json({ added, skipped });
+}));
+
+// Won: create the client project from the lead and link the two.
+app.post('/api/leads/:id/convert', h((req, res) => {
+  const lead = get('SELECT * FROM leads WHERE id = ?', Number(req.params.id));
+  if (!lead) throw new Error('lead not found');
+  if (lead.project_id && get('SELECT id FROM projects WHERE id = ?', lead.project_id)) throw new Error('lead already has a project');
+  const p = cleanProject({
+    ...PROJECT_FIELDS,
+    name: lead.company || lead.contact || lead.email,
+    client: lead.contact, url: lead.website, notes: lead.notes,
+    client_country: lead.country || 'US', client_legal_name: lead.company, client_contact: lead.contact,
+    client_email: lead.email, currency: lead.currency || ((lead.country || 'US') === 'US' ? 'USD' : 'EUR'),
+  });
+  const cols = ['name', ...Object.keys(PROJECT_FIELDS)];
+  db.exec('BEGIN');
+  let projectId;
+  try {
+    projectId = run(
+      `INSERT INTO projects (${cols.join(', ')}, created_at) VALUES (${cols.map(() => '?').join(', ')}, ?)`,
+      ...cols.map((c) => p[c]), today()
+    ).lastInsertRowid;
+    run("UPDATE leads SET project_id = ?, status = 'won', updated_at = ? WHERE id = ?", projectId, today(), lead.id);
+    db.exec('COMMIT');
+  } catch (e) {
+    db.exec('ROLLBACK');
+    throw e;
+  }
+  res.status(201).json(get('SELECT * FROM projects WHERE id = ?', projectId));
 }));
 
 // --- settings --------------------------------------------------------------

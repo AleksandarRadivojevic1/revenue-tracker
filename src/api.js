@@ -47,6 +47,12 @@ export const api = {
   updateTransfer: (id, data) => req('PUT', `/api/transfers/${id}`, data),
   deleteTransfer: (id) => req('DELETE', `/api/transfers/${id}`),
 
+  createLead: (data) => req('POST', '/api/leads', data),
+  updateLead: (id, data) => req('PUT', `/api/leads/${id}`, data),
+  deleteLead: (id) => req('DELETE', `/api/leads/${id}`),
+  importLeads: (rows, source) => req('POST', '/api/leads/import', { rows, source }),
+  convertLead: (id) => req('POST', `/api/leads/${id}/convert`),
+
   updateSettings: (data) => req('PUT', '/api/settings', data),
 
   nbsRate: (currency, date) => req('GET', `/api/nbs-rate?currency=${currency}&date=${date}`),

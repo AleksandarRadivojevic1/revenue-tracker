@@ -429,8 +429,13 @@ button { font-family: inherit; cursor: pointer; }
   /* topbar: keep one row, shrink chrome, drop the wordmark */
   .topbar-inner { padding: 10px 14px; gap: 8px; }
   .brand span:not(.mark) { display: none; }
-  .topbar nav { margin-left: 0; gap: 2px; }
-  .nav-btn { padding: 7px 10px; }
+  .topbar nav {
+    margin-left: 0; gap: 2px;
+    /* five tabs don't fit a phone row — let them scroll sideways */
+    flex: 1; min-width: 0; overflow-x: auto; scrollbar-width: none;
+  }
+  .topbar .spacer { display: none; }
+  .nav-btn { padding: 7px 10px; white-space: nowrap; flex-shrink: 0; }
   .seg button { padding: 4px 9px; font-size: 12px; }
 
   .page { padding: 20px 16px 64px; }

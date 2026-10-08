@@ -4,6 +4,8 @@ import Dashboard from './pages/Dashboard.jsx';
 import ProjectDetail from './pages/ProjectDetail.jsx';
 import Settings from './pages/Settings.jsx';
 import Invoices from './pages/Invoices.jsx';
+import Leads from './pages/Leads.jsx';
+import { followUpDue } from '../server/leads.js';
 
 function addMonthsIso(iso, months) {
   const [y, m, d] = iso.split('-').map(Number);
@@ -79,6 +81,11 @@ export default function App() {
   async function saveTransfer(id, d) { if (id) await api.updateTransfer(id, d); else await api.createTransfer(d); await reload(); }
   async function deleteTransfer(id) { await api.deleteTransfer(id); await reload(); }
 
+  async function saveLead(id, d) { if (id) await api.updateLead(id, d); else await api.createLead(d); await reload(); }
+  async function deleteLead(id) { await api.deleteLead(id); await reload(); }
+  async function importLeads(rows, source) { const r = await api.importLeads(rows, source); await reload(); return r; }
+  async function convertLead(id) { const p = await api.convertLead(id); await reload(); return p; }
+
   async function createOverhead(d) { await api.createOverhead(d); await reload(); }
   async function updateOverhead(id, d) { await api.updateOverhead(id, d); await reload(); }
   async function deleteOverhead(id) { await api.deleteOverhead(id); await reload(); }
@@ -95,6 +102,7 @@ export default function App() {
   }
 
   const go = (name, projectId = null) => setView({ name, projectId });
+  const followUps = (data.leads || []).filter((l) => followUpDue(l, data.today)).length;
 
   return (
     <>
@@ -107,6 +115,9 @@ export default function App() {
           <nav>
             <button className={`nav-btn ${view.name === 'dashboard' ? 'active' : ''}`} onClick={() => go('dashboard')}>Dashboard</button>
             <button className={`nav-btn ${view.name === 'invoices' ? 'active' : ''}`} onClick={() => go('invoices')}>Invoices</button>
+            <button className={`nav-btn ${view.name === 'leads' ? 'active' : ''}`} onClick={() => go('leads')}>
+              Leads{followUps > 0 && <span className="pill amber" style={{ marginLeft: 6, padding: '0 6px' }}>{followUps}</span>}
+            </button>
             <button className={`nav-btn ${view.name === 'settings' ? 'active' : ''}`} onClick={() => go('settings')}>Settings</button>
           </nav>
           <div className="spacer" />
@@ -133,6 +144,10 @@ export default function App() {
       )}
       {view.name === 'invoices' && (
         <Invoices data={data} createInvoice={createInvoice} voidInvoice={voidInvoice} payInvoice={payInvoice} setPaymentLink={setPaymentLink} />
+      )}
+      {view.name === 'leads' && (
+        <Leads data={data} saveLead={saveLead} deleteLead={deleteLead} importLeads={importLeads}
+          convertLead={convertLead} onOpenProject={(id) => go('project', id)} />
       )}
       {view.name === 'settings' && (
         <Settings data={data} saveSettings={saveSettings} reload={reload} />

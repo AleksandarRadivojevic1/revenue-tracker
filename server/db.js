@@ -214,6 +214,29 @@ db.exec(`
   );
 `);
 
+// Sales pipeline: prospects (e.g. cold-email replies) before they're projects.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS leads (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    company TEXT NOT NULL DEFAULT '',
+    contact TEXT DEFAULT '',
+    email TEXT DEFAULT '',
+    phone TEXT DEFAULT '',
+    website TEXT DEFAULT '',
+    country TEXT DEFAULT 'US',
+    source TEXT DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'new',      -- new | contacted | replied | call | proposal | won | lost
+    value REAL,                              -- estimated deal value
+    currency TEXT DEFAULT 'USD',
+    next_action TEXT DEFAULT '',
+    next_action_on TEXT,
+    notes TEXT DEFAULT '',
+    project_id INTEGER REFERENCES projects(id) ON DELETE SET NULL,
+    created_at TEXT NOT NULL DEFAULT (date('now')),
+    updated_at TEXT NOT NULL DEFAULT (date('now'))
+  );
+`);
+
 // Cache of NBS middle rates (currency → RSD) by date, filled on demand.
 db.exec(`
   CREATE TABLE IF NOT EXISTS nbs_rates (
