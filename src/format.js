@@ -1,21 +1,32 @@
-// Display helpers. All stored amounts are EUR; RSD is derived via the rate.
+// Display helpers. Every amount is in its own native currency (EUR, USD or
+// RSD). The EUR ⇄ RSD toggle converts EUR amounts only, at today's rate; USD
+// is always shown as USD — today's rate is never applied to it.
 
-export function formatMoney(amountEur, settings) {
-  const cur = settings?.display_currency || 'EUR';
-  if (cur === 'RSD') {
-    const rsd = amountEur * (settings?.eur_to_rsd || 0);
-    return new Intl.NumberFormat('sr-RS', {
-      style: 'currency',
-      currency: 'RSD',
-      maximumFractionDigits: 0,
-    }).format(rsd);
-  }
-  return new Intl.NumberFormat('de-DE', {
-    style: 'currency',
-    currency: 'EUR',
-    maximumFractionDigits: 2,
-  }).format(amountEur);
+const rsdFormat = new Intl.NumberFormat('sr-RS', { style: 'currency', currency: 'RSD', maximumFractionDigits: 0 });
+const eurFormat = new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR', maximumFractionDigits: 2 });
+const usdFormat = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
+
+export function formatMoney(amount, currency = 'EUR', settings) {
+  if (currency === 'USD') return usdFormat.format(amount);
+  if (currency === 'RSD') return rsdFormat.format(amount);
+  if (settings?.display_currency === 'RSD') return rsdFormat.format(amount * (settings?.eur_to_rsd || 0));
+  return eurFormat.format(amount);
 }
+
+/**
+ * Format a { currency: amount } map (from money.js perCurrency) as one string,
+ * e.g. "1.200,00 € · $500.00". Never sums across currencies. Zero entries are
+ * dropped unless everything is zero.
+ */
+export function formatAmounts(byCurrency, settings, pick = (v) => v) {
+  const entries = Object.entries(byCurrency).map(([c, v]) => [c, pick(v)]);
+  const nonZero = entries.filter(([, v]) => Math.abs(v) > 0.004);
+  const shown = nonZero.length ? nonZero : entries.slice(0, 1);
+  if (shown.length === 0) return formatMoney(0, 'EUR', settings);
+  return shown.map(([c, v]) => formatMoney(v, c, settings)).join(' · ');
+}
+
+export const CURRENCY_LABEL = { EUR: 'EUR (€)', USD: 'USD ($)', RSD: 'RSD (дин)' };
 
 export function formatDate(iso) {
   if (!iso) return '—';
@@ -24,6 +35,14 @@ export function formatDate(iso) {
     day: '2-digit',
     month: '2-digit',
     year: 'numeric',
+  });
+}
+
+/** Unambiguous long date for US readers: "Sep 6, 2026" (06/09 reads as June 9 there). */
+export function formatDateLong(iso) {
+  if (!iso) return '—';
+  return new Date(iso + 'T00:00:00Z').toLocaleDateString('en-US', {
+    month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC',
   });
 }
 

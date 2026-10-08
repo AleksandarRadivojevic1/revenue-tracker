@@ -72,7 +72,7 @@ export default function App() {
   async function deletePayment(id) { await api.deletePayment(id); await reload(); }
 
   async function createInvoice(d) { const inv = await api.createInvoice(d); await reload(); return inv; }
-  async function deleteInvoice(id) { await api.deleteInvoice(id); await reload(); }
+  async function voidInvoice(id) { await api.voidInvoice(id); await reload(); }
 
   async function createOverhead(d) { await api.createOverhead(d); await reload(); }
   async function updateOverhead(id, d) { await api.updateOverhead(id, d); await reload(); }
@@ -125,7 +125,7 @@ export default function App() {
           payCharge={payCharge} updatePayment={updatePayment} deletePayment={deletePayment} />
       )}
       {view.name === 'invoices' && (
-        <Invoices data={data} createInvoice={createInvoice} deleteInvoice={deleteInvoice} />
+        <Invoices data={data} createInvoice={createInvoice} voidInvoice={voidInvoice} />
       )}
       {view.name === 'settings' && (
         <Settings data={data} saveSettings={saveSettings} reload={reload} />

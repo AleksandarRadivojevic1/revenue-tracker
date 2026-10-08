@@ -135,4 +135,54 @@ ensureColumn('invoices', 'pdv_eur', 'REAL DEFAULT 0');
 ensureColumn('invoices', 'total_eur', 'REAL DEFAULT 0');
 ensureColumn('invoices', 'pdv_exempt', 'INTEGER DEFAULT 0');   // 1 = foreign client / izvoz usluga
 
+// --- US clients ------------------------------------------------------------
+// Native currency per money row (EUR | USD | RSD). Every default renders the
+// rows that existed before exactly as they were: EUR.
+for (const t of ['charges', 'payments', 'overheads', 'overhead_payments', 'projects']) {
+  ensureColumn(t, 'currency', "TEXT DEFAULT 'EUR'");
+}
+
+// Client details for foreign (US) clients, per project.
+ensureColumn('projects', 'client_country', "TEXT DEFAULT 'RS'");        // ISO 3166 alpha-2
+ensureColumn('projects', 'client_type', "TEXT DEFAULT 'company'");      // company | individual
+ensureColumn('projects', 'client_legal_name', "TEXT DEFAULT ''");       // the entity, not the owner
+ensureColumn('projects', 'client_contact', "TEXT DEFAULT ''");
+ensureColumn('projects', 'client_email', "TEXT DEFAULT ''");
+ensureColumn('projects', 'sow_ref', "TEXT DEFAULT ''");
+ensureColumn('projects', 'w8ben_sent_on', 'TEXT');
+
+// Invoice snapshot: `currency` stays the RSD/EUR/BOTH *display mode* of a EUR
+// document; doc_currency is the currency the amounts are actually in. New rows
+// store items as {unit, amount} plus subtotal/pdv/total in doc_currency; old
+// rows keep the *_eur columns and the renderer falls back to them.
+ensureColumn('invoices', 'doc_currency', "TEXT DEFAULT 'EUR'");
+ensureColumn('invoices', 'lang', "TEXT DEFAULT 'sr'");                  // sr | en
+ensureColumn('invoices', 'subtotal', 'REAL');
+ensureColumn('invoices', 'pdv', 'REAL');
+ensureColumn('invoices', 'total', 'REAL');
+ensureColumn('invoices', 'due_on', 'TEXT');
+ensureColumn('invoices', 'terms', "TEXT DEFAULT ''");                   // Due on receipt | Net 7 | Net 14
+ensureColumn('invoices', 'stage', "TEXT DEFAULT 'full'");               // full | deposit | balance
+ensureColumn('invoices', 'deposit_ref', "TEXT DEFAULT ''");             // deposit invoice no. (balance stage)
+// Invoices are voided, never deleted, so an issued number is never reused.
+ensureColumn('invoices', 'status', "TEXT DEFAULT 'issued'");            // issued | void
+
+// English seller identity — must match the Payoneer profile character for
+// character. Real values live only in this (gitignored) DB, never in code.
+ensureColumn('settings', 'seller_name_en', "TEXT DEFAULT ''");
+ensureColumn('settings', 'seller_brand', "TEXT DEFAULT ''");
+ensureColumn('settings', 'seller_address_en', "TEXT DEFAULT ''");
+ensureColumn('settings', 'seller_email', "TEXT DEFAULT ''");
+ensureColumn('settings', 'seller_phone', "TEXT DEFAULT ''");
+ensureColumn('settings', 'seller_entity_type', "TEXT DEFAULT 'individual'"); // individual | preduzetnik | doo
+ensureColumn('settings', 'payout_usd_json', "TEXT DEFAULT '{}'");        // USD receiving account
+ensureColumn('settings', 'tax_date_basis', "TEXT DEFAULT 'paid_on'");    // paid_on | received_on
+
+// Tax records per payment, for the quarterly freelancer filing.
+ensureColumn('payments', 'received_on', 'TEXT');        // credited in Payoneer
+ensureColumn('payments', 'channel', 'TEXT');            // payoneer_receiving_ach | payoneer_request_ach | payoneer_request_card | domestic
+ensureColumn('payments', 'fee', 'REAL DEFAULT 0');      // processor fee, in the payment's currency
+ensureColumn('payments', 'nbs_rate_rsd', 'REAL');       // NBS middle rate, currency → RSD
+ensureColumn('payments', 'amount_rsd', 'REAL');         // gross × rate, snapshotted
+
 export default db;

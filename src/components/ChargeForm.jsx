@@ -1,16 +1,16 @@
 import { useState } from 'react';
 import Modal from './Modal.jsx';
 import { ADDONS, INCOME_CATEGORIES, EXPENSE_CATEGORIES, FREQUENCIES } from '../catalog.js';
+import { CURRENCIES, businessToday as today } from '../../server/money.js';
 
-const today = () => new Date().toISOString().slice(0, 10);
-
-export default function ChargeForm({ initial, defaultDirection = 'income', onSubmit, onClose }) {
+export default function ChargeForm({ initial, defaultDirection = 'income', defaultCurrency = 'EUR', onSubmit, onClose }) {
   const isEdit = Boolean(initial?.id);
   const [form, setForm] = useState({
     direction: initial?.direction || defaultDirection,
     category: initial?.category || (defaultDirection === 'income' ? 'feature' : 'hosting'),
     label: initial?.label || '',
     amount: initial?.amount ?? '',
+    currency: initial?.currency || defaultCurrency,
     frequency: initial?.frequency || 'one_time',
     next_due: initial?.next_due || today(),
     active: initial?.active ?? 1,
@@ -103,8 +103,13 @@ export default function ChargeForm({ initial, defaultDirection = 'income', onSub
 
       <div className="field-row">
         <div className="field">
-          <label>Amount (EUR)</label>
-          <input className="input" type="number" step="0.01" min="0" value={form.amount} onChange={set('amount')} placeholder="0.00" />
+          <label>Amount ({form.currency})</label>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <input className="input" type="number" step="0.01" min="0" value={form.amount} onChange={set('amount')} placeholder="0.00" />
+            <select className="select" style={{ width: 84 }} value={form.currency} onChange={set('currency')} title="Currency">
+              {CURRENCIES.map((c) => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
         </div>
         <div className="field">
           <label>Frequency</label>

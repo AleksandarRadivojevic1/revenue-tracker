@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import Modal from './Modal.jsx';
 import { PACKAGES, PACKAGE_BY_KEY, CUSTOM_PACKAGE, MAINTENANCE_TIERS } from '../catalog.js';
-import { formatMoney } from '../format.js';
+import { formatMoney, CURRENCY_LABEL } from '../format.js';
+import { CURRENCIES, businessToday as today } from '../../server/money.js';
 
-const today = () => new Date().toISOString().slice(0, 10);
+const COUNTRIES = ['RS', 'US', 'CA', 'GB', 'AU', 'DE', 'NL', 'SI', 'HR', 'BA', 'ME', 'MK'];
 
 export default function ProjectForm({ initial, settings, onSubmit, onClose }) {
   const isEdit = Boolean(initial?.id);
@@ -17,7 +18,25 @@ export default function ProjectForm({ initial, settings, onSubmit, onClose }) {
     client_address: initial?.client_address || '',
     client_pib: initial?.client_pib || '',
     client_mb: initial?.client_mb || '',
+    currency: initial?.currency || 'EUR',
+    client_country: initial?.client_country || 'RS',
+    client_type: initial?.client_type || 'company',
+    client_legal_name: initial?.client_legal_name || '',
+    client_contact: initial?.client_contact || '',
+    client_email: initial?.client_email || '',
+    sow_ref: initial?.sow_ref || '',
+    w8ben_sent_on: initial?.w8ben_sent_on || '',
   });
+  const isDomestic = form.client_country === 'RS';
+
+  // A new project's currency follows the client's country (US → USD). On edit
+  // it's left alone — existing charges keep their own currency regardless.
+  function changeCountry(e) {
+    const country = e.target.value.toUpperCase().slice(0, 2);
+    const next = { ...form, client_country: country };
+    if (!isEdit && country.length === 2) next.currency = country === 'US' ? 'USD' : 'EUR';
+    setForm(next);
+  }
 
   // new-project-only: auto-create build + maintenance charges
   const [addDefaults, setAddDefaults] = useState(true);
@@ -87,6 +106,7 @@ export default function ProjectForm({ initial, settings, onSubmit, onClose }) {
   }
 
   const showDefaults = !isEdit && Boolean(form.package);
+  const cur = form.currency;
 
   return (
     <Modal
@@ -116,6 +136,21 @@ export default function ProjectForm({ initial, settings, onSubmit, onClose }) {
 
       <div className="field-row">
         <div className="field">
+          <label>Client country</label>
+          <input className="input" list="country-codes" value={form.client_country} onChange={changeCountry}
+            maxLength={2} placeholder="RS" style={{ textTransform: 'uppercase' }} />
+          <datalist id="country-codes">{COUNTRIES.map((c) => <option key={c} value={c} />)}</datalist>
+        </div>
+        <div className="field">
+          <label>Billing currency</label>
+          <select className="select" value={form.currency} onChange={set('currency')}>
+            {CURRENCIES.map((c) => <option key={c} value={c}>{CURRENCY_LABEL[c]}</option>)}
+          </select>
+        </div>
+      </div>
+
+      <div className="field-row">
+        <div className="field">
           <label>Live URL</label>
           <input className="input" value={form.url} onChange={set('url')} placeholder="optikacajs.rs" />
         </div>
@@ -139,7 +174,7 @@ export default function ProjectForm({ initial, settings, onSubmit, onClose }) {
               {p.popular && <span className="pill accent-blue best"><span className="dot" />Top</span>}
               <div className="pkg-name">{p.name}</div>
               <div className="pkg-tag">{p.tagline}</div>
-              <div className="pkg-price">from {formatMoney(p.build, settings)}</div>
+              <div className="pkg-price">from {formatMoney(p.build, 'EUR', settings)}</div>
             </button>
           ))}
           <button type="button"
@@ -163,7 +198,7 @@ export default function ProjectForm({ initial, settings, onSubmit, onClose }) {
             <>
               <div className="field-row" style={{ marginTop: 12 }}>
                 <div className="field" style={{ marginBottom: 0 }}>
-                  <label>Build amount (EUR)</label>
+                  <label>Build amount ({cur})</label>
                   <input className="input" type="number" step="0.01" min="0" value={buildAmount}
                     onChange={(e) => setBuildAmount(e.target.value)} placeholder="e.g. 900 — leave empty to skip" />
                 </div>
@@ -191,7 +226,7 @@ export default function ProjectForm({ initial, settings, onSubmit, onClose }) {
                   </select>
                 </div>
                 <div className="field" style={{ marginBottom: 0 }}>
-                  <label>Amount (EUR)</label>
+                  <label>Amount ({cur})</label>
                   <input className="input" type="number" step="0.01" min="0" value={maintAmount}
                     onChange={(e) => setMaintAmount(e.target.value)} disabled={maintTier === 'none'} placeholder="0" />
                 </div>
@@ -215,20 +250,61 @@ export default function ProjectForm({ initial, settings, onSubmit, onClose }) {
           Billing details (for invoices)
         </summary>
         <div style={{ marginTop: 12 }}>
+          {!isDomestic && (
+            <>
+              <div className="field-row">
+                <div className="field">
+                  <label>Client type</label>
+                  <select className="select" value={form.client_type} onChange={set('client_type')}>
+                    <option value="company">Company (pays from a business account)</option>
+                    <option value="individual">Individual (pays via Payoneer link)</option>
+                  </select>
+                </div>
+                <div className="field">
+                  <label>Legal name (bill the entity)</label>
+                  <input className="input" value={form.client_legal_name} onChange={set('client_legal_name')} placeholder="Smith Kitchen & Bath LLC" />
+                </div>
+              </div>
+              <div className="field-row">
+                <div className="field">
+                  <label>Contact person</label>
+                  <input className="input" value={form.client_contact} onChange={set('client_contact')} placeholder="John Smith" />
+                </div>
+                <div className="field">
+                  <label>Billing email</label>
+                  <input className="input" type="email" value={form.client_email} onChange={set('client_email')} placeholder="ap@client.com" />
+                </div>
+              </div>
+            </>
+          )}
           <div className="field">
             <label>Client address</label>
-            <input className="input" value={form.client_address} onChange={set('client_address')} placeholder="Ulica i broj, grad" />
+            <textarea className="input" rows={isDomestic ? 2 : 3} value={form.client_address} onChange={set('client_address')}
+              placeholder={isDomestic ? 'Ulica i broj\nGrad' : '123 Main St\nColumbus, OH 43004'} />
           </div>
-          <div className="field-row">
-            <div className="field">
-              <label>PIB</label>
-              <input className="input" value={form.client_pib} onChange={set('client_pib')} placeholder="9 cifara" />
+          {isDomestic ? (
+            <div className="field-row">
+              <div className="field">
+                <label>PIB</label>
+                <input className="input" value={form.client_pib} onChange={set('client_pib')} placeholder="9 cifara" />
+              </div>
+              <div className="field">
+                <label>Matični broj (MB)</label>
+                <input className="input" value={form.client_mb} onChange={set('client_mb')} placeholder="8 cifara" />
+              </div>
             </div>
-            <div className="field">
-              <label>Matični broj (MB)</label>
-              <input className="input" value={form.client_mb} onChange={set('client_mb')} placeholder="8 cifara" />
+          ) : (
+            <div className="field-row">
+              <div className="field">
+                <label>SOW reference</label>
+                <input className="input" value={form.sow_ref} onChange={set('sow_ref')} placeholder="e.g. SKB-01" />
+              </div>
+              <div className="field">
+                <label>W-8BEN sent on</label>
+                <input className="input" type="date" value={form.w8ben_sent_on || ''} onChange={set('w8ben_sent_on')} />
+              </div>
             </div>
-          </div>
+          )}
         </div>
       </details>
     </Modal>

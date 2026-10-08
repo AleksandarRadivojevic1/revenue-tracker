@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
-import { chargeStatus, projectRollup } from '../../server/money.js';
-import { formatMoney, formatDate, FREQUENCY_LABEL } from '../format.js';
+import { chargeStatus, currencyOf, perCurrency, projectRollup } from '../../server/money.js';
+import { formatMoney, formatAmounts, formatDate, FREQUENCY_LABEL } from '../format.js';
 import { packageMeta } from '../catalog.js';
 import StatusBadge from '../components/StatusBadge.jsx';
 import ProjectForm from '../components/ProjectForm.jsx';
@@ -20,7 +20,13 @@ export default function ProjectDetail({
 
   const charges = useMemo(() => data.charges.filter((c) => c.project_id === projectId), [data.charges, projectId]);
   const payments = useMemo(() => data.payments.filter((p) => p.project_id === projectId), [data.payments, projectId]);
-  const roll = useMemo(() => projectRollup(charges, payments), [charges, payments]);
+  // One rollup per currency in use — EUR and USD are never added together.
+  const roll = useMemo(
+    () => perCurrency([charges, payments], (c) => projectRollup(charges, payments, c)),
+    [charges, payments]
+  );
+  const fmtRoll = (k) => formatAmounts(roll, settings, (r) => r[k]);
+  const profitPositive = Object.values(roll).every((r) => r.profit >= 0);
 
   if (!project) return <main className="page"><button className="back-link" onClick={onBack}>← Back</button><p>Project not found.</p></main>;
 
@@ -57,7 +63,7 @@ export default function ProjectDetail({
                       <td className="muted">{FREQUENCY_LABEL[c.frequency] === '/mo' ? 'Monthly' : FREQUENCY_LABEL[c.frequency] === '/yr' ? 'Yearly' : 'One-time'}</td>
                       <td>{c.frequency === 'one_time' && !c.active ? <span className="muted">—</span> : formatDate(c.next_due)}</td>
                       <td>{status ? <StatusBadge status={status} /> : <span className="muted">—</span>}</td>
-                      <td className="num">{formatMoney(c.amount, settings)}</td>
+                      <td className="num">{formatMoney(c.amount, currencyOf(c), settings)}</td>
                       <td>
                         <div className="row-actions">
                           {c.active && <button className="btn btn-sm" disabled={busyId === c.id} onClick={() => pay(c.id)}>Paid</button>}
@@ -85,6 +91,7 @@ export default function ProjectDetail({
         <div>
           <div className="link-row">
             <h1 className="page-title">{project.name}</h1>
+            {(project.client_country || 'RS') !== 'RS' && <span className="pill accent-blue"><span className="dot" />{project.client_country} · {project.currency}</span>}
             {pkg && <span className={`pill accent-${pkg.accent}`}><span className="dot" />{pkg.name}</span>}
             <span className="pill neutral" style={{ textTransform: 'capitalize' }}>{project.status}</span>
           </div>
@@ -109,10 +116,10 @@ export default function ProjectDetail({
         <div className="stack">
           <div className="card">
             <h2 className="section-title" style={{ marginTop: 0 }}>This site</h2>
-            <div className="kv"><span className="k">Revenue (paid)</span><span className="v blue">{formatMoney(roll.revenue, settings)}</span></div>
-            <div className="kv"><span className="k">Expenses (paid)</span><span className="v">{formatMoney(roll.expenses, settings)}</span></div>
-            <div className="kv"><span className="k">Profit</span><span className="v" style={{ color: roll.profit >= 0 ? 'var(--color-vivid-green)' : 'var(--color-tangerine)' }}>{formatMoney(roll.profit, settings)}</span></div>
-            <div className="kv"><span className="k">Recurring / mo</span><span className="v">{formatMoney(roll.mrr, settings)}</span></div>
+            <div className="kv"><span className="k">Revenue (paid)</span><span className="v blue">{fmtRoll('revenue')}</span></div>
+            <div className="kv"><span className="k">Expenses (paid, incl. fees)</span><span className="v">{fmtRoll('expenses')}</span></div>
+            <div className="kv"><span className="k">Profit</span><span className="v" style={{ color: profitPositive ? 'var(--color-vivid-green)' : 'var(--color-tangerine)' }}>{fmtRoll('profit')}</span></div>
+            <div className="kv"><span className="k">Recurring / mo</span><span className="v">{fmtRoll('mrr')}</span></div>
           </div>
 
           <div className="card" style={{ padding: 0 }}>
@@ -123,8 +130,14 @@ export default function ProjectDetail({
                   {payments.map((p) => (
                     <tr key={p.id}>
                       <td>
-                        <div style={{ fontWeight: 500 }}>{formatMoney(p.amount, settings)} <span className="pill neutral" style={{ marginLeft: 4 }}>{p.direction}</span></div>
-                        <div className="muted" style={{ fontSize: 12 }}>{formatDate(p.paid_on)} · {p.note}</div>
+                        <div style={{ fontWeight: 500 }}>{formatMoney(p.amount, currencyOf(p), settings)} <span className="pill neutral" style={{ marginLeft: 4 }}>{p.direction}</span></div>
+                        <div className="muted" style={{ fontSize: 12 }}>
+                          {formatDate(p.paid_on)} · {p.note}
+                          {p.fee > 0 && <> · fee {formatMoney(p.fee, currencyOf(p), settings)}</>}
+                          {p.direction === 'income' && p.channel && p.channel !== 'domestic' && p.amount_rsd == null && currencyOf(p) !== 'RSD' && (
+                            <> · <span style={{ color: 'var(--color-tangerine)' }}>NBS rate missing</span></>
+                          )}
+                        </div>
                       </td>
                       <td className="num">
                         <div className="row-actions">
@@ -150,6 +163,7 @@ export default function ProjectDetail({
         <ChargeForm
           initial={chargeModal.initial}
           defaultDirection={chargeModal.defaultDirection || 'income'}
+          defaultCurrency={project.currency || 'EUR'}
           onSubmit={(d) => chargeModal.initial
             ? updateCharge(chargeModal.initial.id, d)
             : createCharge({ ...d, project_id: project.id })}

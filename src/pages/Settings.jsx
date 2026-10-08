@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { formatMoney } from '../format.js';
+import { isValidAba } from '../../server/money.js';
 
 const SELLER_FIELDS = [
   ['seller_name', 'Naziv (ime / firma)', 'Aleksandar Radivojević PR'],
@@ -9,6 +10,29 @@ const SELLER_FIELDS = [
   ['seller_bank', 'Tekući račun', '160-0000000000000-00'],
   ['seller_note', 'Napomena (podrazumevana)', 'Optional default note'],
 ];
+
+// English (US invoice) identity. Name and address must match the Payoneer
+// profile character for character — the payer's bank checks them.
+const SELLER_EN_FIELDS = [
+  ['seller_name_en', 'Legal name — ASCII, exactly as on Payoneer', 'First Last (no ć/č/š/ž/đ)'],
+  ['seller_brand', 'Brand (header only, never the beneficiary)', 'Studio name — no LLC / Inc until registered'],
+  ['seller_address_en', 'Address — exactly as on Payoneer', 'Street and number\nCity ZIP\nSerbia', true],
+  ['seller_email', 'Email', 'billing@yourdomain.com'],
+  ['seller_phone', 'Phone', '+1 …'],
+];
+
+// USD receiving account. Stored only in this database — never in the repo.
+const PAYOUT_FIELDS = [
+  ['beneficiary_name', 'Beneficiary name', 'As shown in Payoneer receiving accounts'],
+  ['beneficiary_address', 'Beneficiary address', '', true],
+  ['bank_name', 'Bank name', ''],
+  ['bank_address', 'Bank address', '', true],
+  ['routing_aba', 'Routing number (ABA)', '9 digits'],
+  ['account_number', 'Account number', ''],
+  ['account_type', 'Account type', 'Checking'],
+];
+
+const parsePayout = (s) => { try { return JSON.parse(s || '{}'); } catch { return {}; } };
 
 export default function Settings({ data, saveSettings }) {
   const { settings } = data;
@@ -23,6 +47,18 @@ export default function Settings({ data, saveSettings }) {
   const [pdvObveznik, setPdvObveznik] = useState(!!settings.pdv_obveznik);
   const [pdvRate, setPdvRate] = useState(settings.pdv_rate ?? 20);
   const [pdvSaved, setPdvSaved] = useState(false);
+  const [sellerEn, setSellerEn] = useState({
+    ...Object.fromEntries(SELLER_EN_FIELDS.map(([k]) => [k, settings[k] || ''])),
+    seller_entity_type: settings.seller_entity_type || 'individual',
+  });
+  const [payout, setPayout] = useState(() => {
+    const p = parsePayout(settings.payout_usd_json);
+    return Object.fromEntries(PAYOUT_FIELDS.map(([k]) => [k, p[k] || '']));
+  });
+  const [enSaved, setEnSaved] = useState(false);
+  const [enErr, setEnErr] = useState('');
+  const [taxBasis, setTaxBasis] = useState(settings.tax_date_basis || 'paid_on');
+  const routingBad = payout.routing_aba && !isValidAba(payout.routing_aba);
 
   async function save() {
     setErr(''); setSaved(false);
@@ -51,6 +87,20 @@ export default function Settings({ data, saveSettings }) {
     } catch (e) { setErr(e.message); }
   }
 
+  async function saveEnglish() {
+    setEnErr(''); setEnSaved(false);
+    try {
+      await saveSettings({ ...sellerEn, payout_usd_json: JSON.stringify(payout) });
+      setEnSaved(true);
+      setTimeout(() => setEnSaved(false), 2000);
+    } catch (e) { setEnErr(e.message); }
+  }
+
+  async function changeTaxBasis(v) {
+    setTaxBasis(v);
+    try { await saveSettings({ tax_date_basis: v }); } catch (e) { setErr(e.message); }
+  }
+
   function exportJson() {
     const payload = {
       exported_at: new Date().toISOString(),
@@ -59,6 +109,7 @@ export default function Settings({ data, saveSettings }) {
       payments: data.payments,
       overheads: data.overheads,
       overhead_payments: data.overhead_payments,
+      invoices: data.invoices,
       settings: data.settings,
     };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
@@ -83,7 +134,8 @@ export default function Settings({ data, saveSettings }) {
         <div className="card">
           <h2 className="section-title" style={{ marginTop: 0 }}>Currency</h2>
           <p className="page-sub" style={{ marginTop: 0 }}>
-            All amounts are stored in <strong>EUR</strong>. The RSD view multiplies by this rate.
+            Every amount is stored in its own currency (EUR, USD or RSD). The RSD view converts
+            <strong> EUR</strong> amounts by this rate; USD is never converted at today's rate.
           </p>
           <div className="field-row" style={{ alignItems: 'flex-end' }}>
             <div className="field" style={{ marginBottom: 0 }}>
@@ -94,7 +146,7 @@ export default function Settings({ data, saveSettings }) {
           </div>
           {saved && <p className="inline-note" style={{ color: 'var(--color-vivid-green)' }}>Saved.</p>}
           {err && <div className="form-error" style={{ marginTop: 10 }}>{err}</div>}
-          <p className="inline-note">Example: {formatMoney(100, { display_currency: 'RSD', eur_to_rsd: Number(rate) })} for €100.</p>
+          <p className="inline-note">Example: {formatMoney(100, 'EUR', { display_currency: 'RSD', eur_to_rsd: Number(rate) })} for €100.</p>
         </div>
 
         <div className="card">
@@ -122,6 +174,70 @@ export default function Settings({ data, saveSettings }) {
         <button className="btn btn-primary" onClick={saveSeller}>Save business details</button>
         {sellerSaved && <p className="inline-note" style={{ color: 'var(--color-vivid-green)' }}>Saved.</p>}
         {err && <div className="form-error" style={{ marginTop: 10 }}>{err}</div>}
+      </div>
+
+      <h2 className="section-title">English invoices (US clients)</h2>
+      <div className="card">
+        <p className="page-sub" style={{ marginTop: 0 }}>
+          Printed on English invoices. The payer's bank checks the beneficiary name and address against your
+          Payoneer profile, so copy them <strong>character for character</strong>. These live only in your
+          database — never in the repo.
+        </p>
+        {SELLER_EN_FIELDS.map(([k, label, placeholder, multi]) => (
+          <div className="field" key={k}>
+            <label>{label}</label>
+            {multi
+              ? <textarea className="input" rows={3} value={sellerEn[k]} onChange={(e) => setSellerEn({ ...sellerEn, [k]: e.target.value })} placeholder={placeholder} />
+              : <input className="input" value={sellerEn[k]} onChange={(e) => setSellerEn({ ...sellerEn, [k]: e.target.value })} placeholder={placeholder} />}
+          </div>
+        ))}
+        {/[^\x20-\x7E]/.test(sellerEn.seller_name_en) && (
+          <p className="inline-note" style={{ color: 'var(--color-tangerine)', marginTop: -6 }}>
+            Name has non-ASCII characters — use exactly what Payoneer shows.
+          </p>
+        )}
+        <div className="field">
+          <label>Entity type</label>
+          <select className="select" value={sellerEn.seller_entity_type} onChange={(e) => setSellerEn({ ...sellerEn, seller_entity_type: e.target.value })}>
+            <option value="individual">Individual (frilenser) — clients get a W-8BEN</option>
+            <option value="preduzetnik">Preduzetnik — clients get a W-8BEN</option>
+            <option value="doo">DOO — clients get a W-8BEN-E</option>
+          </select>
+        </div>
+
+        <h3 className="section-title" style={{ fontSize: 14 }}>USD receiving account</h3>
+        <p className="inline-note" style={{ marginTop: 0 }}>
+          Printed for US <strong>company</strong> clients only (ACH / domestic wire). Individuals get a Payoneer
+          payment link instead. No SWIFT code is ever printed. Each invoice snapshots these at issue time.
+        </p>
+        {PAYOUT_FIELDS.map(([k, label, placeholder, multi]) => (
+          <div className="field" key={k}>
+            <label>{label}</label>
+            {multi
+              ? <textarea className="input" rows={2} value={payout[k]} onChange={(e) => setPayout({ ...payout, [k]: e.target.value })} placeholder={placeholder} />
+              : <input className="input" value={payout[k]} onChange={(e) => setPayout({ ...payout, [k]: e.target.value })} placeholder={placeholder} />}
+          </div>
+        ))}
+        {routingBad && (
+          <p className="inline-note" style={{ color: 'var(--color-tangerine)', marginTop: -6 }}>
+            Not a valid ABA routing number — check for a mistyped digit.
+          </p>
+        )}
+        <button className="btn btn-primary" onClick={saveEnglish} disabled={routingBad}>Save English details</button>
+        {enSaved && <p className="inline-note" style={{ color: 'var(--color-vivid-green)' }}>Saved.</p>}
+        {enErr && <div className="form-error" style={{ marginTop: 10 }}>{enErr}</div>}
+      </div>
+
+      <h2 className="section-title">Freelancer tax</h2>
+      <div className="card">
+        <p className="page-sub" style={{ marginTop: 0 }}>
+          Which date puts a foreign payment into a quarter. Ask your accountant; switching only regroups the
+          dashboard table — no payment data changes.
+        </p>
+        <select className="select" value={taxBasis} onChange={(e) => changeTaxBasis(e.target.value)}>
+          <option value="paid_on">Paid-on date</option>
+          <option value="received_on">Date credited in Payoneer (falls back to paid-on)</option>
+        </select>
       </div>
 
       <h2 className="section-title">PDV (VAT)</h2>

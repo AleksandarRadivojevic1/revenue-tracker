@@ -1,8 +1,7 @@
 import { useState } from 'react';
 import Modal from './Modal.jsx';
 import { OVERHEAD_CATEGORIES, OVERHEAD_PRESETS, FREQUENCIES } from '../catalog.js';
-
-const today = () => new Date().toISOString().slice(0, 10);
+import { CURRENCIES, businessToday as today } from '../../server/money.js';
 
 export default function OverheadForm({ initial, onSubmit, onClose }) {
   const isEdit = Boolean(initial?.id);
@@ -10,6 +9,7 @@ export default function OverheadForm({ initial, onSubmit, onClose }) {
     label: initial?.label || '',
     category: initial?.category || 'tool',
     amount: initial?.amount ?? '',
+    currency: initial?.currency || 'EUR',
     frequency: initial?.frequency || 'monthly',
     next_due: initial?.next_due || today(),
     active: initial?.active ?? 1,
@@ -25,6 +25,7 @@ export default function OverheadForm({ initial, onSubmit, onClose }) {
       label: p.label,
       category: p.category,
       amount: p.amount || '',
+      currency: p.currency || f.currency,
       frequency: p.frequency,
       next_due: p.frequency === 'one_time' ? f.next_due : today(),
     }));
@@ -89,8 +90,13 @@ export default function OverheadForm({ initial, onSubmit, onClose }) {
           </select>
         </div>
         <div className="field">
-          <label>Amount (EUR)</label>
-          <input className="input" type="number" step="0.01" min="0" value={form.amount} onChange={set('amount')} placeholder="0.00" />
+          <label>Amount ({form.currency})</label>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <input className="input" type="number" step="0.01" min="0" value={form.amount} onChange={set('amount')} placeholder="0.00" />
+            <select className="select" style={{ width: 84 }} value={form.currency} onChange={set('currency')} title="Currency">
+              {CURRENCIES.map((c) => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
         </div>
       </div>
 

@@ -34,7 +34,7 @@ export const api = {
   deletePayment: (id) => req('DELETE', `/api/payments/${id}`),
 
   createInvoice: (data) => req('POST', '/api/invoices', data),
-  deleteInvoice: (id) => req('DELETE', `/api/invoices/${id}`),
+  voidInvoice: (id) => req('POST', `/api/invoices/${id}/void`),
 
   createOverhead: (data) => req('POST', '/api/overheads', data),
   updateOverhead: (id, data) => req('PUT', `/api/overheads/${id}`, data),

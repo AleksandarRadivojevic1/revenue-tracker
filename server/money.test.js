@@ -13,6 +13,13 @@ import {
   invoiceSubtotal,
   invoiceTotals,
   nextInvoiceNumber,
+  currenciesIn,
+  businessToday,
+  addDays,
+  dueDateFor,
+  isValidAba,
+  paymentRsd,
+  quarterlyRollup,
 } from './money.js';
 
 describe('addMonths', () => {
@@ -203,5 +210,133 @@ describe('projectRollup', () => {
     expect(r.revenue).toBe(2000);
     expect(r.mrr).toBe(60); // 50 + 120/12
     expect(r.profit).toBe(2000);
+  });
+});
+
+describe('multi-currency rollups', () => {
+  const payments = [
+    { direction: 'income', amount: 800 },                    // legacy row → EUR
+    { direction: 'income', amount: 1200, currency: 'USD', fee: 12 },
+    { direction: 'expense', amount: 30, currency: 'EUR' },
+  ];
+  it('never adds currencies together', () => {
+    expect(paymentsRollup(payments)).toEqual({ revenue: 800, expenses: 30, profit: 770 });
+    expect(paymentsRollup(payments, 'USD')).toEqual({ revenue: 1200, expenses: 12, profit: 1188 });
+  });
+  it('yearlyRollup filters by currency', () => {
+    const dated = payments.map((p) => ({ ...p, paid_on: '2026-09-06' }));
+    expect(yearlyRollup(dated, [{ amount: 20, currency: 'USD', paid_on: '2026-09-01' }], 'USD'))
+      .toEqual([{ year: '2026', revenue: 1200, expenses: 32, profit: 1168 }]);
+  });
+  it('projectRollup MRR only counts charges in that currency', () => {
+    const charges = [
+      { direction: 'income', active: 1, frequency: 'monthly', amount: 50 },
+      { direction: 'income', active: 1, frequency: 'monthly', amount: 99, currency: 'USD' },
+    ];
+    expect(projectRollup(charges, [], 'USD').mrr).toBe(99);
+    expect(projectRollup(charges, []).mrr).toBe(50);
+  });
+  it('currenciesIn lists present currencies in a stable order', () => {
+    expect(currenciesIn(payments, [{ currency: 'RSD' }])).toEqual(['EUR', 'USD', 'RSD']);
+    expect(currenciesIn([])).toEqual([]);
+  });
+});
+
+describe('businessToday', () => {
+  it('returns the Belgrade date at 00:30 local in summer (UTC+2)', () => {
+    expect(businessToday(new Date('2026-09-05T22:30:00Z'))).toBe('2026-09-06');
+  });
+  it('returns the Belgrade date at 00:30 local in winter (UTC+1)', () => {
+    expect(businessToday(new Date('2026-01-05T23:30:00Z'))).toBe('2026-01-06');
+  });
+  it('matches UTC during the day', () => {
+    expect(businessToday(new Date('2026-09-06T12:00:00Z'))).toBe('2026-09-06');
+  });
+});
+
+describe('due dates', () => {
+  it('adds days across a month end', () => {
+    expect(addDays('2026-09-28', 7)).toBe('2026-10-05');
+  });
+  it('maps payment terms to a due date', () => {
+    expect(dueDateFor('2026-09-06', 'Due on receipt')).toBe('2026-09-06');
+    expect(dueDateFor('2026-09-06', 'Net 7')).toBe('2026-09-13');
+    expect(dueDateFor('2026-09-06', 'Net 14')).toBe('2026-09-20');
+    expect(dueDateFor('2026-09-06', '')).toBe('2026-09-06');
+  });
+});
+
+describe('isValidAba', () => {
+  it('accepts a 9-digit number with a valid checksum', () => {
+    expect(isValidAba('123456780')).toBe(true); // fake, checksum-valid
+  });
+  it('rejects a single mistyped digit, wrong length or non-digits', () => {
+    expect(isValidAba('123456789')).toBe(false);
+    expect(isValidAba('12345678')).toBe(false);
+    expect(isValidAba('12345678a')).toBe(false);
+    expect(isValidAba('')).toBe(false);
+  });
+});
+
+describe('voided invoice numbers', () => {
+  it('a voided invoice keeps its number, so the next one never reuses it', () => {
+    // 2026-002 was voided — the row (and its number) stays in the table.
+    const rows = [
+      { number: '2026-001', status: 'issued' },
+      { number: '2026-002', status: 'void' },
+    ];
+    expect(nextInvoiceNumber(rows.map((r) => r.number), '2026')).toBe('2026-003');
+  });
+});
+
+describe('paymentRsd', () => {
+  it('uses the snapshotted amount_rsd, else amount × its own NBS rate', () => {
+    expect(paymentRsd({ amount: 100, currency: 'USD', amount_rsd: 10050 })).toBe(10050);
+    expect(paymentRsd({ amount: 100, currency: 'USD', nbs_rate_rsd: 100.5 })).toBe(10050);
+  });
+  it('RSD payments need no rate; others without a rate are unknown', () => {
+    expect(paymentRsd({ amount: 5000, currency: 'RSD' })).toBe(5000);
+    expect(paymentRsd({ amount: 100, currency: 'USD' })).toBeNull();
+  });
+});
+
+describe('quarterlyRollup', () => {
+  const p = (paid_on, extra = {}) => ({
+    direction: 'income', amount: 1000, currency: 'USD', nbs_rate_rsd: 100,
+    channel: 'payoneer_receiving_ach', paid_on, ...extra,
+  });
+  it('puts payments in the right calendar quarter, newest first', () => {
+    const r = quarterlyRollup([p('2026-03-31'), p('2026-04-01'), p('2026-06-30'), p('2026-10-01')]);
+    expect(r).toEqual([
+      { quarter: '2026-Q4', gross_rsd: 100000, count: 1, missing_rate: 0 },
+      { quarter: '2026-Q2', gross_rsd: 200000, count: 2, missing_rate: 0 },
+      { quarter: '2026-Q1', gross_rsd: 100000, count: 1, missing_rate: 0 },
+    ]);
+  });
+  it('excludes domestic, legacy (no channel) and expense rows', () => {
+    const r = quarterlyRollup([
+      p('2026-09-01'),
+      p('2026-09-02', { channel: 'domestic' }),
+      p('2026-09-03', { channel: null }),
+      p('2026-09-04', { direction: 'expense' }),
+    ]);
+    expect(r).toEqual([{ quarter: '2026-Q3', gross_rsd: 100000, count: 1, missing_rate: 0 }]);
+  });
+  it('can bucket by the Payoneer-credited date instead', () => {
+    const rows = [p('2026-06-30', { received_on: '2026-07-02' })];
+    expect(quarterlyRollup(rows)[0].quarter).toBe('2026-Q2');
+    expect(quarterlyRollup(rows, 'received_on')[0].quarter).toBe('2026-Q3');
+    expect(quarterlyRollup([p('2026-06-30')], 'received_on')[0].quarter).toBe('2026-Q2'); // falls back
+  });
+  it('flags payments still missing an NBS rate instead of guessing', () => {
+    const r = quarterlyRollup([p('2026-09-01'), p('2026-09-02', { nbs_rate_rsd: null })]);
+    expect(r[0]).toEqual({ quarter: '2026-Q3', gross_rsd: 100000, count: 2, missing_rate: 1 });
+  });
+});
+
+describe('invoice line math (new rows)', () => {
+  it('reads `unit` on new rows and `unit_eur` on old ones', () => {
+    expect(invoiceItemAmount({ qty: 2, unit: 600 })).toBe(1200);
+    expect(invoiceItemAmount({ qty: 2, unit_eur: 600 })).toBe(1200);
   });
 });

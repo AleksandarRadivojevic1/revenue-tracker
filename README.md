@@ -5,7 +5,9 @@ project (build) cost, monthly/yearly maintenance, client-requested features,
 per-site expenses, upcoming scheduled payments, and overall revenue.
 
 Built around my real service catalog (Start / Standard / Plus / Web app +
-add-ons + maintenance tiers), with a EUR ⇄ RSD display toggle.
+add-ons + maintenance tiers), with a EUR ⇄ RSD display toggle. Handles both
+domestic clients (Serbian predračun/račun) and US clients (English USD invoices
+paid into a Payoneer receiving account).
 
 ## Run it
 
@@ -27,7 +29,8 @@ npm test
 ```
 
 Unit tests cover the money/date logic in `server/money.js` (due-date
-advancement, status, MRR, rollups).
+advancement, status, MRR, per-currency rollups, the quarterly tax base, Belgrade
+business dates) and the invoice PDFs in `src/invoicePdf.js` (Serbian and English).
 
 ## How the data works
 
@@ -36,8 +39,19 @@ advancement, status, MRR, rollups).
   build cost, maintenance (monthly/yearly), features, hosting/domain/tools.
 - **Payments** — the actual ledger. Marking a charge *Paid* logs a payment and
   advances its next-due date. Revenue/expense totals come from real payments.
-- **Settings** — EUR base + EUR→RSD rate. All amounts stored in EUR; RSD is a
-  display conversion only.
+- **Currencies** — every charge, payment and overhead carries its own currency
+  (EUR, USD or RSD) and totals are kept per currency, never summed across. The
+  EUR→RSD rate in Settings converts EUR for display only; USD is never converted
+  at today's rate.
+- **Invoices** — immutable snapshots (seller, buyer, items, rate). Language
+  follows the client's country: `sr` prints the predračun/račun, `en` prints a
+  US Letter invoice with due date, deposit/balance stages and payment
+  instructions. Invoices are **voided, never deleted**, so a number is never
+  reused.
+- **Tax** — foreign payments record channel, Payoneer fee and the NBS rate of
+  the day; the dashboard shows the freelancer tax base (gross RSD) per quarter.
+- **Private details** — the Payoneer name/address and USD receiving account live
+  only in `payments.db` (via Settings), never in this public repo.
 
 ## Production / self-host
 

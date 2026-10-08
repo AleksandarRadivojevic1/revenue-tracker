@@ -74,6 +74,7 @@ export const OVERHEAD_CATEGORIES = [
   { key: 'tool', label: 'Tool / subscription' },
   { key: 'hosting', label: 'Hosting' },
   { key: 'domain', label: 'Domain' },
+  { key: 'fees', label: 'Payment fees' },
   { key: 'other', label: 'Other' },
 ];
 
@@ -82,6 +83,8 @@ export const OVERHEAD_PRESETS = [
   { key: 'claude', label: 'Claude Code', category: 'tool', amount: 17, frequency: 'monthly' },
   { key: 'hosting', label: 'Hosting', category: 'hosting', amount: 5, frequency: 'monthly' },
   { key: 'domain', label: 'Domain', category: 'domain', amount: 12, frequency: 'yearly' },
+  // Log each Payoneer → bank withdrawal's fee (≈4% FX + fee) so the true net shows.
+  { key: 'withdrawal', label: 'Payoneer withdrawal fee', category: 'fees', amount: 0, currency: 'USD', frequency: 'one_time' },
 ];
 
 export const INCOME_CATEGORIES = [
