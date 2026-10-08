@@ -6,10 +6,12 @@ import StatusBadge from '../components/StatusBadge.jsx';
 import ProjectForm from '../components/ProjectForm.jsx';
 import ChargeForm from '../components/ChargeForm.jsx';
 import PaymentForm from '../components/PaymentForm.jsx';
+import { InvoiceForm, invoicedPeriods } from './Invoices.jsx';
 
 export default function ProjectDetail({
   data, projectId, onBack,
   updateProject, deleteProject, createCharge, updateCharge, deleteCharge, payCharge, updatePayment, deletePayment,
+  createInvoice,
 }) {
   const { settings, today } = data;
   const project = data.projects.find((p) => p.id === projectId);
@@ -17,6 +19,8 @@ export default function ProjectDetail({
   const [chargeModal, setChargeModal] = useState(null); // { initial?, defaultDirection }
   const [editPayment, setEditPayment] = useState(null); // payment row being edited
   const [busyId, setBusyId] = useState(null);
+  const [invoicing, setInvoicing] = useState(null); // charge to invoice
+  const invoiced = useMemo(() => invoicedPeriods(data.invoices || []), [data.invoices]);
 
   const charges = useMemo(() => data.charges.filter((c) => c.project_id === projectId), [data.charges, projectId]);
   const payments = useMemo(() => data.payments.filter((p) => p.project_id === projectId), [data.payments, projectId]);
@@ -66,6 +70,9 @@ export default function ProjectDetail({
                       <td className="num">{formatMoney(c.amount, currencyOf(c), settings)}</td>
                       <td>
                         <div className="row-actions">
+                          {c.active && c.direction === 'income' && (invoiced.get(`${c.id}:${c.next_due}`)
+                            ? <span className="muted" style={{ fontSize: 12 }}>Inv. {invoiced.get(`${c.id}:${c.next_due}`)}</span>
+                            : <button className="btn btn-sm btn-ghost" onClick={() => setInvoicing(c)}>Invoice</button>)}
                           {c.active && <button className="btn btn-sm" disabled={busyId === c.id} onClick={() => pay(c.id)}>Paid</button>}
                           <button className="btn btn-sm btn-ghost" onClick={() => setChargeModal({ initial: c })}>Edit</button>
                           <button className="btn btn-sm btn-ghost btn-danger" disabled={busyId === c.id} onClick={() => removeCharge(c.id)}>✕</button>
@@ -169,6 +176,10 @@ export default function ProjectDetail({
             : createCharge({ ...d, project_id: project.id })}
           onClose={() => setChargeModal(null)}
         />
+      )}
+      {invoicing && (
+        <InvoiceForm projects={data.projects} charges={data.charges} invoices={data.invoices || []} settings={settings}
+          forCharge={invoicing} onSubmit={createInvoice} onClose={() => setInvoicing(null)} />
       )}
       {editPayment && (
         <PaymentForm

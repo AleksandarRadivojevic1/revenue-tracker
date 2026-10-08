@@ -116,7 +116,7 @@ export default function App() {
 
       {view.name === 'dashboard' && (
         <Dashboard data={data} onOpenProject={(id) => go('project', id)} onOpenInvoices={() => go('invoices')}
-          createProject={createProject} payCharge={payCharge}
+          createProject={createProject} payCharge={payCharge} createInvoice={createInvoice}
           createOverhead={createOverhead} updateOverhead={updateOverhead}
           deleteOverhead={deleteOverhead} payOverhead={payOverhead} />
       )}
@@ -124,7 +124,8 @@ export default function App() {
         <ProjectDetail data={data} projectId={view.projectId} onBack={() => go('dashboard')}
           updateProject={updateProject} deleteProject={deleteProject}
           createCharge={createCharge} updateCharge={updateCharge} deleteCharge={deleteCharge}
-          payCharge={payCharge} updatePayment={updatePayment} deletePayment={deletePayment} />
+          payCharge={payCharge} updatePayment={updatePayment} deletePayment={deletePayment}
+          createInvoice={createInvoice} />
       )}
       {view.name === 'invoices' && (
         <Invoices data={data} createInvoice={createInvoice} voidInvoice={voidInvoice} payInvoice={payInvoice} setPaymentLink={setPaymentLink} />

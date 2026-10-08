@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import Modal from '../components/Modal.jsx';
-import { formatMoney, formatDate, CURRENCY_LABEL, INVOICE_STATE_META } from '../format.js';
+import { formatMoney, formatDate, periodLabel, CURRENCY_LABEL, INVOICE_STATE_META } from '../format.js';
 import { downloadInvoicePdf } from '../invoicePdf.js';
 import { invoiceEmail, mailtoHref } from '../invoiceEmail.js';
 import { CURRENCIES, businessToday as today, currencyOf, invoiceState } from '../../server/money.js';
@@ -118,12 +118,29 @@ export default function Invoices({ data, createInvoice, voidInvoice, payInvoice,
   );
 }
 
-function InvoiceForm({ projects, charges, invoices, settings, onSubmit, onClose }) {
-  const [projectId, setProjectId] = useState(projects[0]?.id || '');
+/**
+ * Which charge periods are already on a (non-void) invoice:
+ * Map "chargeId:period" → invoice number.
+ */
+export function invoicedPeriods(invoices) {
+  const m = new Map();
+  for (const inv of invoices) {
+    if (inv.status === 'void') continue;
+    for (const item of JSON.parse(inv.items_json || '[]')) {
+      if (item.charge_id) m.set(`${item.charge_id}:${item.period ?? null}`, inv.number);
+    }
+  }
+  return m;
+}
+
+// `forCharge` (optional): invoice just that one charge's current period — the
+// one-click retainer invoice from the dashboard.
+export function InvoiceForm({ projects, charges, invoices, settings, forCharge, onSubmit, onClose }) {
+  const [projectId, setProjectId] = useState(forCharge?.project_id || projects[0]?.id || '');
   const project = projects.find((p) => p.id === Number(projectId));
   const isForeign = (project?.client_country || 'RS') !== 'RS';
 
-  const [supplyDate, setSupplyDate] = useState(today());
+  const [supplyDate, setSupplyDate] = useState(forCharge?.next_due || today());
   const [place, setPlace] = useState('');
   const [displayMode, setDisplayMode] = useState('RSD');
   const [note, setNote] = useState('');
@@ -138,20 +155,26 @@ function InvoiceForm({ projects, charges, invoices, settings, onSubmit, onClose 
   const [busy, setBusy] = useState(false);
 
   // Seed line items from the selected project's income charges in the
-  // invoice's currency.
+  // invoice's currency (closed charges listed but unticked). A recurring
+  // charge's line names its period.
   const seededFor = useMemo(() => {
     const rows = charges
       .filter((c) => c.project_id === Number(projectId) && c.direction === 'income' && currencyOf(c) === docCur)
-      .map((c) => ({ description: c.label || c.category, qty: 1, unit: c.amount, include: true, charge_id: c.id }));
-    return { key: `${projectId}:${docCur}`, rows };
-  }, [projectId, docCur, charges]);
+      .filter((c) => !forCharge || c.id === forCharge.id)
+      .map((c) => {
+        const label = c.label || c.category;
+        const period = c.frequency === 'monthly' && c.next_due ? ` — ${periodLabel(c.next_due, lang)}` : '';
+        return { description: label + period, qty: 1, unit: c.amount, include: Boolean(c.active), charge_id: c.id };
+      });
+    return { key: `${projectId}:${docCur}:${lang}`, rows };
+  }, [projectId, docCur, lang, charges, forCharge]);
 
   // When the project changes, language/currency/exemption follow its client.
   const [lastProject, setLastProject] = useState(null);
   if (lastProject !== projectId) {
     setLastProject(projectId);
     setLang(isForeign ? 'en' : 'sr');
-    setDocCur(project?.currency || 'EUR');
+    setDocCur(forCharge ? currencyOf(forCharge) : project?.currency || 'EUR');
     setExempt(isForeign);
     setStage('full');
     setDepositRef('');

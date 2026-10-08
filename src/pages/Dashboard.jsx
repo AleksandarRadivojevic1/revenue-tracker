@@ -8,18 +8,20 @@ import { packageMeta, OVERHEAD_CATEGORIES } from '../catalog.js';
 import StatusBadge from '../components/StatusBadge.jsx';
 import ProjectForm from '../components/ProjectForm.jsx';
 import OverheadForm from '../components/OverheadForm.jsx';
+import { InvoiceForm, invoicedPeriods } from './Invoices.jsx';
 import useMediaQuery from '../hooks/useMediaQuery.js';
 
 const OVERHEAD_LABEL = Object.fromEntries(OVERHEAD_CATEGORIES.map((c) => [c.key, c.label]));
 
 export default function Dashboard({
-  data, onOpenProject, onOpenInvoices, createProject, payCharge,
+  data, onOpenProject, onOpenInvoices, createProject, payCharge, createInvoice,
   createOverhead, updateOverhead, deleteOverhead, payOverhead,
 }) {
   const { projects, charges, payments, overheads, overhead_payments, invoices = [], settings, today } = data;
   const [showNew, setShowNew] = useState(false);
   const [overheadModal, setOverheadModal] = useState(null); // { initial? } | null
   const [payingKey, setPayingKey] = useState(null);
+  const [invoicing, setInvoicing] = useState(null); // charge row to invoice
   const compact = useMediaQuery('(max-width: 560px)');
 
   // KPIs per currency — EUR and USD are never added together. Each currency
@@ -52,7 +54,7 @@ export default function Dashboard({
     const fromCharges = charges
       .filter((c) => c.active && c.next_due)
       .map((c) => ({
-        kind: 'charge', id: c.id, source: projectName(c.project_id), projectId: c.project_id,
+        kind: 'charge', id: c.id, source: projectName(c.project_id), projectId: c.project_id, charge: c,
         label: c.label || c.category, frequency: c.frequency, next_due: c.next_due, amount: c.amount, currency: currencyOf(c),
         status: chargeStatus(c.next_due, today),
       }));
@@ -69,6 +71,15 @@ export default function Dashboard({
   }, [charges, overheads, today]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // One row per year and currency, newest year first.
+  const invoiced = useMemo(() => invoicedPeriods(invoices), [invoices]);
+  // Income charge rows get an Invoice action, or the number already issued for this period.
+  function invoiceAction(r) {
+    if (r.kind !== 'charge' || r.charge.direction !== 'income') return null;
+    const number = invoiced.get(`${r.id}:${r.next_due}`);
+    if (number) return <span className="muted" style={{ fontSize: 12 }}>Invoiced {number}</span>;
+    return <button className="btn btn-sm btn-ghost" onClick={() => setInvoicing(r.charge)}>Invoice</button>;
+  }
+
   const yearly = useMemo(() => {
     const byCur = perCurrency([payments, overhead_payments], (c) => yearlyRollup(payments, overhead_payments, c));
     return Object.entries(byCur)
@@ -196,6 +207,7 @@ export default function Dashboard({
                 <div className="sched-card-sub">{r.label} · {FREQUENCY_LABEL[r.frequency]} · Due {formatDate(r.next_due)}</div>
                 <div className="sched-card-foot">
                   <StatusBadge status={r.status} />
+                  {invoiceAction(r)}
                   <button className="btn btn-sm" disabled={payingKey === `${r.kind}:${r.id}`} onClick={() => handlePay(r)}>
                     {payingKey === `${r.kind}:${r.id}` ? '…' : 'Mark paid'}
                   </button>
@@ -225,9 +237,12 @@ export default function Dashboard({
                   <td><StatusBadge status={r.status} /></td>
                   <td className="num">{formatMoney(r.amount, r.currency, settings)}</td>
                   <td className="num">
-                    <button className="btn btn-sm" disabled={payingKey === `${r.kind}:${r.id}`} onClick={() => handlePay(r)}>
-                      {payingKey === `${r.kind}:${r.id}` ? '…' : 'Mark paid'}
-                    </button>
+                    <div className="row-actions">
+                      {invoiceAction(r)}
+                      <button className="btn btn-sm" disabled={payingKey === `${r.kind}:${r.id}`} onClick={() => handlePay(r)}>
+                        {payingKey === `${r.kind}:${r.id}` ? '…' : 'Mark paid'}
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -373,6 +388,10 @@ export default function Dashboard({
 
       {showNew && (
         <ProjectForm settings={settings} onSubmit={createProject} onClose={() => setShowNew(false)} />
+      )}
+      {invoicing && (
+        <InvoiceForm projects={projects} charges={charges} invoices={invoices} settings={settings}
+          forCharge={invoicing} onSubmit={createInvoice} onClose={() => setInvoicing(null)} />
       )}
       {overheadModal && (
         <OverheadForm

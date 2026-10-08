@@ -38,6 +38,15 @@ export function formatDate(iso) {
   });
 }
 
+/** Billing period of a recurring charge, from its due date: "October 2026" / "oktobar 2026". */
+export function periodLabel(iso, lang = 'en') {
+  if (!iso) return '';
+  const d = new Date(iso + 'T00:00:00Z');
+  if (lang === 'en') return d.toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+  const months = ['januar', 'februar', 'mart', 'april', 'maj', 'jun', 'jul', 'avgust', 'septembar', 'oktobar', 'novembar', 'decembar'];
+  return `${months[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
+}
+
 /** Unambiguous long date for US readers: "Sep 6, 2026" (06/09 reads as June 9 there). */
 export function formatDateLong(iso) {
   if (!iso) return '—';
