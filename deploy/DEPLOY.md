@@ -154,6 +154,38 @@ cp /media/library/backups/revenue-tracker/payments-<date>.db \
 docker compose start revenue-tracker
 ```
 
+### Off-site copies (pulled to your laptop)
+
+The NVMe snapshots die with the Pi (theft, fire, a bad power event). These are
+financial records, so keep a second copy off the Pi. `deploy/offsite/` pulls
+them to your laptop over SSH (LAN or WireGuard) once a day:
+
+- **Pull, not push** — the Pi has no credentials to your laptop, so a
+  compromised Pi can't touch the copies.
+- Only new snapshots transfer; every copy is kept (each is tens of KB) and
+  integrity-checked on arrival.
+- **Staleness alarm:** the run fails if the newest snapshot is more than 2 days
+  old — i.e. backups on the Pi have quietly stopped. (The first test run found
+  exactly that: no snapshots between 2026-09-22 and 2026-10-07.)
+
+Needs key-based SSH to the Pi (`ssh acko@192.168.1.156` without a password).
+Run it once by hand, then install the daily timer:
+
+```bash
+deploy/offsite/pull-backups.sh                     # → ~/Backups/revenue-tracker
+mkdir -p ~/.config/systemd/user
+cp deploy/offsite/revenue-tracker-backup-pull.{service,timer} ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now revenue-tracker-backup-pull.timer
+systemctl --user list-timers | grep revenue        # next run
+journalctl --user -u revenue-tracker-backup-pull   # results / STALE alarms
+```
+
+The timer is `Persistent`, so a day missed while the laptop was off runs at the
+next boot. Override `PI_HOST`, `REMOTE_DIR`, `LOCAL_DIR` or `MAX_AGE_DAYS` with
+`systemctl --user edit revenue-tracker-backup-pull.service` (`Environment=`).
+To restore from a laptop copy, `scp` it to the Pi and follow **To restore** above.
+
 ---
 
 ## 7. Homepage tile

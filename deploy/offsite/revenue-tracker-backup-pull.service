@@ -1,0 +1,11 @@
+# systemd --user unit: pull revenue-tracker snapshots off the Pi.
+# Install: see deploy/DEPLOY.md "Off-site copies".
+[Unit]
+Description=Pull revenue-tracker backups off the Pi
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+# Path to your checkout of this repo:
+ExecStart=%h/Documents/GitHub/revenue-tracker/deploy/offsite/pull-backups.sh

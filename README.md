@@ -31,6 +31,10 @@ npm test
 Unit tests cover the money/date logic in `server/money.js` (due-date
 advancement, status, MRR, per-currency rollups, the quarterly tax base, Belgrade
 business dates) and the invoice PDFs in `src/invoicePdf.js` (Serbian and English).
+`server/api.test.js` drives the real Express app (`server/app.js`) against an
+in-memory database: invoice numbering, charge payments (incl. part payments),
+the audit log and the project-delete guard. CI (`.github/workflows/ci.yml`) runs
+the tests and the production build on every push.
 
 ## How the data works
 
@@ -60,6 +64,12 @@ business dates) and the invoice PDFs in `src/invoicePdf.js` (Serbian and English
 - **Payoneer → bank transfers** — logged with their conversion cost vs NBS
   rates (an expense), plus what's still held in Payoneer.
 - **Leads** — a small sales pipeline (CSV import, follow-ups, won → project).
+- **History is protected** — a project with payments or invoices can't be
+  deleted (archive it instead; archived projects stay in every total), every
+  payment edit or delete is kept in an audit log ("edited" on the payment), and
+  a charge can be paid in parts (e.g. a 50/50 deposit) and closes once covered.
+- **Backups** — nightly snapshots on the Pi, pulled off-site daily to a laptop
+  (`deploy/offsite/`, see DEPLOY.md).
 - **Private details** — the Payoneer name/address and USD receiving account live
   only in `payments.db` (via Settings), never in this public repo.
 

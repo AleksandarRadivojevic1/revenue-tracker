@@ -1,0 +1,12 @@
+# Daily, after the Pi's 03:00 UTC snapshot. Persistent: a run missed while the
+# laptop was off or asleep happens at the next boot/wake.
+[Unit]
+Description=Daily off-site pull of revenue-tracker backups
+
+[Timer]
+OnCalendar=*-*-* 09:00:00
+Persistent=true
+RandomizedDelaySec=15min
+
+[Install]
+WantedBy=timers.target
